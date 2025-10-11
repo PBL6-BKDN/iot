@@ -1,0 +1,52 @@
+jetson@nano:~/AI$ sh camera.sh 
+GST_ARGUS: Creating output stream
+CONSUMER: Waiting until producer is connected...
+GST_ARGUS: Available Sensor modes :
+GST_ARGUS: 3264 x 2464 FR = 21.000000 fps Duration = 47619048 ; Analog Gain range min 1.000000, max 10.625000; Exposure Range min 13000, max 683709000;
+
+GST_ARGUS: 3264 x 1848 FR = 28.000001 fps Duration = 35714284 ; Analog Gain range min 1.000000, max 10.625000; Exposure Range min 13000, max 683709000;
+
+GST_ARGUS: 1920 x 1080 FR = 29.999999 fps Duration = 33333334 ; Analog Gain range min 1.000000, max 10.625000; Exposure Range min 13000, max 683709000;
+
+GST_ARGUS: 1640 x 1232 FR = 29.999999 fps Duration = 33333334 ; Analog Gain range min 1.000000, max 10.625000; Exposure Range min 13000, max 683709000;
+
+GST_ARGUS: 1280 x 720 FR = 59.999999 fps Duration = 16666667 ; Analog Gain range min 1.000000, max 10.625000; Exposure Range min 13000, max 683709000;
+
+GST_ARGUS: 1280 x 720 FR = 120.000005 fps Duration = 8333333 ; Analog Gain range min 1.000000, max 10.625000; Exposure Range min 13000, max 683709000;
+
+GST_ARGUS: Running with following settings:
+   Camera index = 0 
+   Camera mode  = 4 
+   Output Stream W = 1280 H = 720 
+   seconds to Run    = 0 
+   Frame Rate = 59.999999 
+GST_ARGUS: Setup Complete, Starting captures for 0 seconds
+GST_ARGUS: Starting repeat capture requests.
+CONSUMER: Producer has connected; continuing.
+Connected to camera server
+nvbuf_utils: dmabuf_fd -1 mapped entry NOT found
+nvbuf_utils: Can not get HW buffer from FD... Exiting...
+CONSUMER: ERROR OCCURRED
+[ WARN:0@2.499] global /home/jetson/opencv/modules/videoio/src/cap_gstreamer.cpp (2402) handleMessage OpenCV | GStreamer warning: Embedded video playback halted; module nvarguscamerasrc0 reported: CANCELLED
+GST_ARGUS: Cleaning up
+(Argus) Error EndOfFile: Unexpected error in reading socket (in src/rpc/socket/client/ClientSocketManager.cpp, function recvThreadCore(), line 266)
+(Argus) Error EndOfFile: Receive worker failure, notifying 2 waiting threads (in src/rpc/socket/client/ClientSocketManager.cpp, function recvThreadCore(), line 340)
+(Argus) Error InvalidState: Argus client is exiting with 2 outstanding client threads (in src/rpc/socket/client/ClientSocketManager.cpp, function recvThreadCore(), line 357)
+(Argus) Error EndOfFile: Receiving thread terminated with error (in src/rpc/socket/client/ClientSocketManager.cpp, function recvThreadWrapper(), line 368)
+(Argus) Error EndOfFile: Client thread received an error from socket (in src/rpc/socket/client/ClientSocketManager.cpp, function send(), line 145)
+(Argus) Error EndOfFile:  (propagating from src/rpc/socket/client/SocketClientDispatch.cpp, function dispatch(), line 91)
+(Argus) Error InvalidState: Receive thread is not running cannot send. (in src/rpc/socket/client/ClientSocketManager.cpp, function send(), line 96)
+(Argus) Error InvalidState:  (propagating from src/rpc/socket/client/SocketClientDispatch.cpp, function dispatch(), line 91)
+(Argus) Error InvalidState: Receive thread is not running cannot send. (in src/rpc/socket/client/ClientSocketManager.cpp, function send(), line 96)
+(Argus) Error InvalidState:  (propagating from src/rpc/socket/client/SocketClientDispatch.cpp, function dispatch(), line 91)
+(Argus) Error InvalidState: Receive thread is not running cannot send. (in src/rpc/socket/client/ClientSocketManager.cpp, function send(), line 96)
+(Argus) Error InvalidState:  (propagating from src/rpc/socket/client/SocketClientDispatch.cpp, function dispatch(), line 91)
+(Argus) Error InvalidState: Receive thread is not running cannot send. (in src/rpc/socket/client/ClientSocketManager.cpp, function send(), line 96)
+(Argus) Error InvalidState:  (propagating from src/rpc/socket/client/SocketClientDispatch.cpp, function dispatch(), line 91)
+(Argus) Error InvalidState: Receive thread is not running cannot send. (in src/rpc/socket/client/ClientSocketManager.cpp, function send(), line 96)
+(Argus) Error InvalidState:  (propagating from src/rpc/socket/client/SocketClientDispatch.cpp, function dispatch(), line 91)
+(Argus) Error EndOfFile: Client thread received an error from socket (in src/rpc/socket/client/ClientSocketManager.cpp, function send(), line 145)
+(Argus) Error EndOfFile:  (propagating from src/rpc/socket/client/SocketClientDispatch.cpp, function dispatch(), line 91)
+[ WARN:0@6.233] global /home/jetson/opencv/modules/videoio/src/cap_gstreamer.cpp (1356) open OpenCV | GStreamer warning: unable to start pipeline
+[ WARN:0@6.235] global /home/jetson/opencv/modules/videoio/src/cap_gstreamer.cpp (862) isPipelinePlaying OpenCV | GStreamer warning: GStreamer: pipeline have not been created
+

@@ -5,6 +5,15 @@ import dotenv
 dotenv.load_dotenv()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Cấu hình GPS
+GPS_PORT = "/dev/ttyTHS1"
+BAUD_RATE = 9600
+
+# Cấu hình phân đoạn làn đường
+SEND_INTERVAL = 12  # Giây, chỉ gửi ảnh mỗi 2 giây (giới hạn tần suất)
+DIFF_THRESHOLD = 25  # Ngưỡng khác biệt, có thể điều chỉnh
+SEND_INTERVAL_MIN = 5
+SEND_INTERVAL_MAX = 10
 # Cấu hình MQTT
 # Địa chỉ IP của máy chủ MQTT
 BROKER_HOST = os.getenv("BROKER_HOST", "192.168.1.11")
@@ -18,7 +27,7 @@ DEVICE_ID = "device001"
 
 BROKER_WS_PATH = os.getenv("BROKER_WS_PATH", "/")
 
-# mic khong co day
+# # mic khong co day
 MIC_INDEX = 12
 AUDIO_SAMPLE_RATE = 48000  
 
@@ -28,7 +37,7 @@ AUDIO_SAMPLE_RATE = 48000
 
 AUDIO_CHUNK_MS = 1000     # Giảm latency
 SILENCE_THRESHOLD = 0.2
-SILENCE_DURATION = 4.0
+SILENCE_DURATION = 2.0
 MIN_SPEECH_DURATION = 2.0
 MAX_AMP = 0.8
 SERVER_HTTP_BASE = os.getenv("SERVER_HTTP_BASE", "http://192.168.1.11:3000")

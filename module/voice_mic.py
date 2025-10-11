@@ -106,11 +106,6 @@ class VoiceStreamer:
                         # Chuyển đổi sang float32 cho VAD và áp dụng chuẩn hóa biên độ
                         audio_float = audio_chunk.astype(np.float32) / 32768.0
 
-                        # # Áp dụng giới hạn biên độ để tránh tiếng rè
-                        # max_amp = np.max(np.abs(audio_float))
-                        # if max_amp > MAX_AMP:  # Nếu biên độ quá lớn
-                        #     audio_float = audio_float * (MAX_AMP/ max_amp)
-
                         # Xử lý VAD
                         vad_result = self.vad.process_audio_chunk(audio_float)
 
@@ -127,7 +122,6 @@ class VoiceStreamer:
                                     audio_data * 32768.0).astype(np.int16).tobytes()
                                 self.on_speech_complete(
                                     int16_audio, vad_result['duration'])
-                                # Tạo thư mục lưu nếu chưa có
                                 save_dir = "debug"
                                 os.makedirs(save_dir, exist_ok=True)
                                 file_path = os.path.join(
@@ -181,112 +175,4 @@ class VoiceStreamer:
         return audio_data
 
 
-class MQTTVoiceSender:
-    """Gửi âm thanh qua MQTT"""
 
-    def __init__(self, mqtt_client: mqtt.Client, device_id: str):
-        self.client = mqtt_client
-        self.device_id = device_id
-        self.topic_prefix = f"device/{device_id}/voice"
-
-    def send_audio_file(self, audio_data: bytes, metadata: Dict[str, Any] = None):
-        """
-        Gửi file âm thanh hoàn chỉnh qua MQTT
-
-        Args:
-            audio_data: Dữ liệu âm thanh raw
-            metadata: Thông tin bổ sung (format, sample_rate, etc.)
-        """
-        if metadata is None:
-            metadata = {}
-
-        # Chia thành chunks nhỏ để tránh vượt quá giới hạn MQTT
-        chunk_size = 1024 * 8  # 8KB per chunk
-        total_chunks = (len(audio_data) + chunk_size - 1) // chunk_size
-
-        stream_id = f"voice_{int(time.time() * 1000)}"
-
-        for i in range(total_chunks):
-            start = i * chunk_size
-            end = min(start + chunk_size, len(audio_data))
-            chunk_data = audio_data[start:end]
-
-            payload = {
-                "deviceId": self.device_id,
-                "streamId": stream_id,
-                "chunkIndex": i,
-                "totalChunks": total_chunks,
-                "isLast": (i == total_chunks - 1),
-                "timestamp": int(time.time() * 1000),
-                "format": metadata.get("format", "pcm16le"),
-                "sampleRate": metadata.get("sampleRate", 48000),
-                "data": base64.b64encode(chunk_data).decode()
-            }
-
-            topic = f"{self.topic_prefix}/file"
-            self.client.publish(topic, json.dumps(payload), qos=1)
-
-        print(f"📤 Gửi file âm thanh qua MQTT - {total_chunks} chunks")
-
-    def send_audio_stream(self, audio_chunk: bytes, timestamp: int, stream_id: str = None):
-        """
-        Gửi chunk âm thanh real-time qua MQTT
-
-        Args:
-            audio_chunk: Chunk âm thanh
-            timestamp: Timestamp của chunk
-            stream_id: ID của stream (tự tạo nếu None)
-        """
-        if stream_id is None:
-            stream_id = f"stream_{int(time.time() * 1000)}"
-
-        payload = {
-            "deviceId": self.device_id,
-            "streamId": stream_id,
-            "timestamp": timestamp,
-            "format": "pcm16le",
-            "sampleRate": 48000,
-            "data": base64.b64encode(audio_chunk).decode()
-        }
-
-        topic = f"{self.topic_prefix}/stream"
-        self.client.publish(topic, json.dumps(payload), qos=0)
-
-
-# ========== DEMO FUNCTIONS ==========
-
-
-def demo_mqtt_streaming():
-    """Demo gửi âm thanh qua MQTT"""
-    print("=== Demo MQTT Voice Streaming ===")
-
-    # Setup MQTT
-    client = mqtt.Client()
-    client.connect("localhost", 1883, 60)
-    client.loop_start()
-
-    mqtt_sender = MQTTVoiceSender(client, "jetson_001")
-    streamer = VoiceStreamer("USB", sample_rate=48000)
-
-    def on_speech_complete(audio_data, duration):
-        print(f"�� Gửi âm thanh qua MQTT: {duration:.1f}s")
-        mqtt_sender.send_audio_file(audio_data, {
-            "format": "pcm16le",
-            "sampleRate": 48000,
-            "duration": duration
-        })
-
-    streamer.set_callbacks(on_speech_complete=on_speech_complete)
-
-    try:
-        streamer.start_listening()
-        print("🎧 Đang lắng nghe và gửi qua MQTT...")
-
-        while True:
-            time.sleep(1)
-
-    except KeyboardInterrupt:
-        print("\n⏹️ Dừng hệ thống...")
-        streamer.stop_listening()
-        client.loop_stop()
-        client.disconnect()

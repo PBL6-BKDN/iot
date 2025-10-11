@@ -11,7 +11,7 @@ import time
 import threading
 import soundfile as sf
 from config import BASE_DIR
-from navigation.speech.voice_speaker import VoiceSpeaker
+from module.voice_speaker import VoiceSpeaker
 from .camera import CameraCapture
 from .voice import VoiceMQTT
 from .gprs_connection import GPRSConnection

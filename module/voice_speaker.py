@@ -4,6 +4,7 @@ import sounddevice as sd
 import numpy as np
 import tempfile
 from scipy import signal
+from container import container
 from log import setup_logger
 
 logger = setup_logger(__name__)
@@ -25,6 +26,7 @@ class VoiceSpeaker:
         if self.speaker_index is None:
             raise ValueError(f"Không tìm thấy loa nào chứa '{speaker_name}'!")
         logger.info(f"🔊 Speaker index (PulseAudio): {self.speaker_index}")
+        container.register("speaker", self)
 
     def play_file(self, file_path: str):
         """Phát âm thanh từ file (wav, flac, ogg, mp3 nếu có soundfile hỗ trợ)."""

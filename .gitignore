@@ -1,0 +1,75 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+*.pyc
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Model files (có thể rất lớn)
+*.pt
+*.onnx
+*.trt
+*.weights
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+logs/
+error.log
+stderr.log
+stdout.log
+
+# Media files
+*.mp4
+*.avi
+*.mov
+
+# Temporary files
+tmp/
+temp/
+
+# Các thư mục đặc biệt
+data/
+
+# Output directories
+output_frames/
+output_images/
