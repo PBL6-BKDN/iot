@@ -14,7 +14,7 @@ BASE_URL = "http://14.185.228.50:3000"
 WARNING_SOUND_FILE = "/home/jetson/AI/audio/mega-horn-398654.mp3"
 
 from log import setup_logger
-from module.camera import Camera
+from module.camera.camera_base import Camera
 logger = setup_logger(__name__)
 
 class ToFSensor:

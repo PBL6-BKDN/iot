@@ -13,7 +13,7 @@ import soundfile as sf
 import numpy as np
 
 from module.vad import VoiceActivityDetector
-from navigation.speech.voice_speaker import VoiceSpeaker
+from module.voice_speaker import VoiceSpeaker
 from config import SILENCE_THRESHOLD, SILENCE_DURATION, MIN_SPEECH_DURATION
 from log import setup_logger
 from config import BASE_DIR, MAX_AMP

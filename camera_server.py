@@ -4,12 +4,11 @@ import pickle
 
 
 def main():
-    # Sử dụng USB camera vì CSI camera không hoạt động
+    # Sử dụng USB camera với chất lượng cao nhất
     pipeline = (
-        "nvarguscamerasrc sensor-mode=4 ! "
-        "video/x-raw(memory:NVMM),width=1280,height=720,framerate=60/1 ! "
-        "nvvidconv ! video/x-raw,format=BGRx ! "
-        "videoconvert ! video/x-raw,format=BGR ! "
+        "v4l2src device=/dev/video0 ! "
+        "image/jpeg,width=1920,height=1080 ! "
+        "jpegdec ! videoconvert ! video/x-raw,format=BGR ! "
         "appsink drop=true max-buffers=1 sync=false"
     )
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
