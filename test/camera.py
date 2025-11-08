@@ -72,4 +72,25 @@ def show_camera():
 
 
 if __name__ == "__main__":
-    show_camera()
+        
+    import cv2
+    import time
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("❌ Không mở được camera")
+    else:
+        print("✅ Camera đã mở, đọc thử frame...")
+        while True:
+            ret, frame = cap.read()
+            if ret:
+                print("✅ Đọc frame thành công:", frame.shape)
+                cv2.imshow("Frame", frame)
+            else:
+                print("⚠️ Không đọc được frame")
+                time.sleep(1)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break   
+            cv2.destroyAllWindows()
+    cap.release()
+
+    # show_camera()

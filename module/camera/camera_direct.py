@@ -6,7 +6,7 @@ import cv2
 
 from log import setup_logger
 from .camera_base import Camera
-
+from container import container
 logger = setup_logger(__name__)
 
 class CameraDirect(Camera):
@@ -74,6 +74,7 @@ class CameraDirect(Camera):
         # self.cap.set(cv2.CAP_PROP_CONTRAST, 40)
         # self.cap.set(cv2.CAP_PROP_SATURATION, 50)
         # self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Giảm buffer để giảm độ trễ
+        container.register("camera", self)
     
     def _reconnect(self):
         """Thử kết nối lại camera."""

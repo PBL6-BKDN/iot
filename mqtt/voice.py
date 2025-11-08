@@ -69,3 +69,7 @@ class VoiceMQTT:
 
             self.mqtt_client.publish(TOPICS['device_stt'], payload, qos=1)
         logger.info(f"Sent {total_chunks} chunks to MQTT")
+        
+    def stop(self):
+        """Stop voice streaming"""
+        self.base_streamer.stop_listening()

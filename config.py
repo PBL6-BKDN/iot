@@ -14,6 +14,7 @@ SEND_INTERVAL = 12  # Giây, chỉ gửi ảnh mỗi 2 giây (giới hạn tần
 DIFF_THRESHOLD = 25  # Ngưỡng khác biệt, có thể điều chỉnh
 SEND_INTERVAL_MIN = 5
 SEND_INTERVAL_MAX = 10
+
 # Cấu hình MQTT
 # Địa chỉ IP của máy chủ MQTT
 BROKER_HOST = os.getenv("BROKER_HOST", "192.168.1.11")
@@ -28,19 +29,25 @@ DEVICE_ID = "device001"
 BROKER_WS_PATH = os.getenv("BROKER_WS_PATH", "/")
 
 # # mic khong co day
-MIC_INDEX = 12
-AUDIO_SAMPLE_RATE = 48000  
+# MIC_INDEX = 12
+# AUDIO_SAMPLE_RATE = 48000  
 
 # mic co day
-# MIC_INDEX = 11
-# AUDIO_SAMPLE_RATE = 44100  
+MIC_INDEX = 11
+AUDIO_SAMPLE_RATE = 44100  
 
 AUDIO_CHUNK_MS = 1000     # Giảm latency
 SILENCE_THRESHOLD = 0.2
 SILENCE_DURATION = 2.0
 MIN_SPEECH_DURATION = 2.0
 MAX_AMP = 0.8
+
 SERVER_HTTP_BASE = os.getenv("SERVER_HTTP_BASE", "http://192.168.1.11:3000")
+
+LLM_BASE_URL = os.getenv("LLM_BASE_URL")
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+
+
 TOPICS = {
     'device_stt': f"device/{DEVICE_ID}/stt/audio",
     'device_obstacle': f"device/{DEVICE_ID}/obstacle",

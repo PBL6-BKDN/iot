@@ -211,34 +211,31 @@ async def initialize_peer_connection():
                 "stun:stun.l.google.com:19302",
                 "stun:stun1.l.google.com:19302",
             ]),
-            # ExpressTurn TURN Server (Your credentials) - UDP + TCP + TLS
+            # ExpressTurn TURN Server (Your credentials)
             RTCIceServer(
                 urls=[
-                    "turn:relay1.expressturn.com:3478",
-                    "turn:relay1.expressturn.com:3478?transport=tcp",
-                    "turns:relay1.expressturn.com:5349",
+                    "turn:relay1.expressturn.com:3480",
+                    "turn:relay1.expressturn.com:3480?transport=tcp",
                 ],
                 username="000000002076506456",
                 credential="bK8A/K+WGDw/tYcuvM9/5xCnEZs=",
             ),
-            # Twilio STUN/TURN (public free tier)
+            # Backup: OpenRelay
             RTCIceServer(
                 urls=[
-                    "turn:global.turn.twilio.com:3478?transport=udp",
-                    "turn:global.turn.twilio.com:3478?transport=tcp",
-                    "turn:global.turn.twilio.com:443?transport=tcp",
+                    "turn:openrelay.metered.ca:80",
+                    "turn:openrelay.metered.ca:443",
                 ],
-                username="f4b4035eaa76f4a55de5f4351567653ee4ff6fa97b50b6b334fcc1be9c27212d",
-                credential="w1uxM55V9yVoqyVFjt+mxDBV0F87AUCemaYVQGxsPLw=",
+                username="openrelayproject",
+                credential="openrelayproject",
             ),
         ]
         
         pc = RTCPeerConnection(
             configuration=RTCConfiguration(iceServers=ice_servers)
         )
-        logger.info("✅ RTCPeerConnection created with ICE servers")
+        logger.info("✅ RTCPeerConnection created with multiple ICE servers")
         logger.info(f"   - {len(ice_servers)} ICE servers configured")
-        logger.info("   Note: aiortc does not support iceTransportPolicy, will try all candidates")
         
     except Exception as e:
         logger.error(f"❌ Failed to create PC with ICE config: {e}")
@@ -321,6 +318,16 @@ async def start_sos_call():
     if pc:
         offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
+        
+        # Đợi ICE gathering hoàn tất (quan trọng cho RELAY candidates)
+        logger.info("⏳ Waiting for ICE gathering to complete...")
+        for i in range(50):  # Max 5 seconds
+            if pc.iceGatheringState == "complete":
+                logger.info("✅ ICE gathering complete")
+                break
+            await asyncio.sleep(0.1)
+        else:
+            logger.warning("⚠️ ICE gathering timeout, proceeding anyway")
 
         payload = json.dumps({"sdp": offer.sdp, "type": offer.type})
         client.publish(f"device/{DEVICE_ID}/webrtc/offer", payload)
@@ -333,6 +340,16 @@ async def answer_call():
     if pc:
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
+        
+        # Đợi ICE gathering hoàn tất (quan trọng cho RELAY candidates)
+        logger.info("⏳ Waiting for ICE gathering to complete...")
+        for i in range(50):  # Max 5 seconds
+            if pc.iceGatheringState == "complete":
+                logger.info("✅ ICE gathering complete")
+                break
+            await asyncio.sleep(0.1)
+        else:
+            logger.warning("⚠️ ICE gathering timeout, proceeding anyway")
         
         payload = json.dumps({"sdp": answer.sdp, "type": answer.type})
         client.publish(f"device/{DEVICE_ID}/webrtc/answer", payload)

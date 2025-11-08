@@ -8,9 +8,9 @@ import busio
 import requests
 import adafruit_vl53l1x
 import time
+from config import SERVER_HTTP_BASE
 from container import container
 from module.voice_speaker import VoiceSpeaker
-BASE_URL = "http://14.185.228.50:3000"
 WARNING_SOUND_FILE = "/home/jetson/AI/audio/mega-horn-398654.mp3"
 
 from log import setup_logger
@@ -18,16 +18,17 @@ from module.camera.camera_base import Camera
 logger = setup_logger(__name__)
 
 class ToFSensor:
-    def __init__(self, i2c, sensor_id):
-        self.sensor_id = sensor_id
+    def __init__(self, i2c, name):
+        self.name = name
         try:
             self.tof = adafruit_vl53l1x.VL53L1X(i2c)
             self.tof.distance_mode = 2
             self.tof.timing_budget = 200
             self.tof.start_ranging()
-            print(f"[Cảm biến {sensor_id}] Khởi tạo thành công.")
+           
+            print(f"[Cảm biến {self.name}] Khởi tạo thành công.")
         except Exception as e:
-            print(f"[Cảm biến {sensor_id}] Lỗi khởi tạo: {e}")
+            print(f"[Cảm biến {self.name}] Lỗi khởi tạo: {e}")
             self.tof = None
 
     def read_distance(self):
@@ -37,7 +38,7 @@ class ToFSensor:
                 self.tof.clear_interrupt()
                 return distance
             except OSError as e:
-                print(f"[Cảm biến {self.sensor_id}] Lỗi đọc dữ liệu: {e}")
+                print(f"[Cảm biến {self.name}] Lỗi đọc dữ liệu: {e}")
                 self.stop()
                 self.tof = None
         return None
@@ -47,7 +48,7 @@ class ToFSensor:
             try:
                 self.tof.stop_ranging()
             except Exception as e:
-                print(f"[Cảm biến {self.sensor_id}] Lỗi khi dừng: {e}")
+                print(f"[Cảm biến {self.name}] Lỗi khi dừng: {e}")
 
     def __del__(self):
         self.stop()
@@ -60,16 +61,17 @@ class ObstacleDetectionSystem:
         self.alert_interval = 5
         self._stop_event = threading.Event()
         self._thread = None
+        self.setup_sensors()
         container.register("obstacle_detection_system", self)
 
     def setup_sensors(self):
         try:
             i2c_buses = [
-                busio.I2C(board.SCL, board.SDA),
-                busio.I2C(board.SCL_1, board.SDA_1),
+                (busio.I2C(board.SCL, board.SDA), "cảm biến dọc"),
+                (busio.I2C(board.SCL_1, board.SDA_1), "cảm biến ngang"),
             ]
-            self.sensors = [ToFSensor(i2c, idx+1)
-                            for idx, i2c in enumerate(i2c_buses)]
+            self.sensors = [ToFSensor(i2c, name)
+                            for i2c, name in i2c_buses]
         except Exception as e:
             print(f"Lỗi khi khởi tạo các cảm biến: {e}")
             self.sensors = []
@@ -83,7 +85,7 @@ class ObstacleDetectionSystem:
             files = {
                 'image': ('obstacle.jpg', buffer.tobytes(), 'image/jpeg')
             }
-            response = requests.post(f"{BASE_URL}/detect", files=files)
+            response = requests.post(f"{SERVER_HTTP_BASE}/detect", files=files)
             data = response.json()
             print(f"[API] Phản hồi: {data}")
             message = data.get("data", {}).get(
@@ -98,15 +100,14 @@ class ObstacleDetectionSystem:
         for sensor in self.sensors:
             distance = sensor.read_distance()
             if distance:
-                logger.debug(
-                    f"[Cảm biến {sensor.sensor_id}] Khoảng cách: {distance} cm")
+                logger.debug(f"[ObstacleDetection] [Cảm biến {sensor.name}] Khoảng cách: {distance} cm")
                 distances.append(distance)
 
         now = time.time()
         if any(100 <= d <= 150 for d in distances):
             if now - self.last_alert_time >= self.alert_interval:
                 self.last_alert_time = now
-                logger.info("[Hệ thống] Phát hiện vật cản trong phạm vi 1–1.5m!")
+                logger.info("[ObstacleDetection] Phát hiện vật cản trong phạm vi 1–1.5m!")
                 
                 speaker: VoiceSpeaker = container.get("speaker")
                 speaker.play_file(WARNING_SOUND_FILE)
@@ -115,36 +116,49 @@ class ObstacleDetectionSystem:
                 frame = camera.get_latest_frame()
                 
                 if frame is not None:
-                    logger.info(f"[Camera] Ảnh đã chụp thành công")
+                    logger.info(f"[ObstacleDetection] Ảnh đã chụp thành công")
                     self.send_image_to_api_async(frame)
                 else:
-                    logger.info("[Camera] Không có ảnh mới.")
+                    logger.info("[ObstacleDetection] Không có ảnh mới.")
                     
     def run(self):
+        if self._thread and self._thread.is_alive():
+            logger.warning("[ObstacleDetection] Đã đang chạy rồi!")
+            return False
+            
         def _run():
             try:
                 while not self._stop_event.is_set():
                     self.detect_obstacles()
                     time.sleep(0.5)
             except KeyboardInterrupt:
-                logger.info("Dừng hệ thống.")
+                logger.info("[ObstacleDetection] Dừng hệ thống.")
             finally:
                 self.cleanup()
         self._stop_event.clear()
-        self.setup_sensors()
+        
         self._thread = threading.Thread(target=_run, daemon=True)
         self._thread.start()
+        logger.info("[ObstacleDetection] Đã khởi động")
+        return True
     
     def stop(self):
-        logger.info("Dừng hệ thống.")
+        if not self._thread or not self._thread.is_alive():
+            logger.warning("[ObstacleDetection] Chưa chạy!")
+            return False
+        logger.info("[ObstacleDetection] Đang dừng")
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             try:
                 self._thread.join(timeout=2.0)
             except Exception:
                 pass
-        if not self._thread:
-            self.cleanup()
+        logger.info("[ObstacleDetection] Đã dừng")
+        return True
+    
+    def is_running(self) -> bool:
+        """Kiểm tra trạng thái hoạt động"""
+        return self._thread is not None and self._thread.is_alive()
       
     def cleanup(self):
         for sensor in self.sensors:
@@ -153,6 +167,10 @@ class ObstacleDetectionSystem:
     def __del__(self):
         self.cleanup()
 
+if __name__ == "__main__":
+    obstacle_detection_system = ObstacleDetectionSystem()
+    obstacle_detection_system.run()
+    
 
 
 

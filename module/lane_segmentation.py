@@ -8,18 +8,20 @@ import threading
 import numpy as np
 from config import BASE_DIR, SERVER_HTTP_BASE, DIFF_THRESHOLD, SEND_INTERVAL_MIN, SEND_INTERVAL_MAX
 from container import container
-from module.camera import Camera
-from module.voice_mic import VoiceMic
+from module.camera.camera_base import Camera
 from module.voice_speaker import VoiceSpeaker
 
-
+from log import setup_logger
+logger = setup_logger(__name__)
 class LaneSegmentation:
     def __init__(self):
-        container.register("lane_segmentation", self)
         self.running = False
         self.thread = None
-        self.adaptive_interval = SEND_INTERVAL_MIN
-    
+        self._stop_event = None
+        self.adaptive_interval = SEND_INTERVAL_MIN    
+        container.register("lane_segmentation", self)
+        logger.info("[LaneSegmentation] Đã khởi động")
+        
     def frames_are_different(self, frame1, frame2, threshold):
         if frame1 is None or frame2 is None:
             return True
@@ -50,7 +52,7 @@ class LaneSegmentation:
 
     def api_sender_thread(self):
         last_sent_time = 0
-        while True:
+        while not self._stop_event.is_set():
             now = time.time()
             camera: Camera = container.get("camera")
             prev_frame = camera.get_latest_frame()
@@ -64,16 +66,35 @@ class LaneSegmentation:
                 else:  
                     self.adaptive_interval = min(SEND_INTERVAL_MAX, self.adaptive_interval * 1.2)
     def run(self):
+        if self.running:
+            print("[LaneSegmentation] Đã đang chạy rồi!")
+            return False
         self.running = True
+        self._stop_event = threading.Event()
         self.thread = threading.Thread(target=self.api_sender_thread, daemon=True)
         self.thread.start()
+        print("[LaneSegmentation] Đã khởi động")
+        return True
         
     def stop(self):
+        if not self.running:
+            print("[LaneSegmentation] Chưa chạy!")
+            return False
+        print("[LaneSegmentation] Đang dừng...")
         self.running = False
-        self.thread.join()  
+        self._stop_event.set()
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=2.0)
+        print("[LaneSegmentation] Đã dừng")
+        return True
+    
+    def is_running(self) -> bool:
+        """Kiểm tra trạng thái hoạt động"""
+        return self.running and self.thread and self.thread.is_alive()
         
     def __del__(self):
-        self.stop()
+        if self.running:
+            self.stop()
         
     def __enter__(self):
         self.run()
