@@ -8,14 +8,17 @@ import busio
 import requests
 import adafruit_vl53l1x
 import time
-from config import SERVER_HTTP_BASE
+from config import SERVER_HTTP_BASE, BASE_DIR
 from container import container
 from module.voice_speaker import VoiceSpeaker
-WARNING_SOUND_FILE = "/home/jetson/AI/audio/mega-horn-398654.mp3"
-
+import os
 from log import setup_logger
 from module.camera.camera_base import Camera
 logger = setup_logger(__name__)
+
+WARNING_SOUND_FILE = os.path.join(BASE_DIR, "audio", "stop.wav")
+
+BASE_AUDIO_PATH = os.path.join(BASE_DIR, "audio", "warning")
 
 class ToFSensor:
     def __init__(self, i2c, name):
@@ -67,7 +70,6 @@ class ObstacleDetectionSystem:
     def setup_sensors(self):
         try:
             i2c_buses = [
-                (busio.I2C(board.SCL, board.SDA), "cảm biến dọc"),
                 (busio.I2C(board.SCL_1, board.SDA_1), "cảm biến ngang"),
             ]
             self.sensors = [ToFSensor(i2c, name)
@@ -112,12 +114,41 @@ class ObstacleDetectionSystem:
                 speaker: VoiceSpeaker = container.get("speaker")
                 speaker.play_file(WARNING_SOUND_FILE)
                 
+                # Lấy ảnh từ camera
                 camera: Camera = container.get("camera")
                 frame = camera.get_latest_frame()
                 
                 if frame is not None:
                     logger.info(f"[ObstacleDetection] Ảnh đã chụp thành công")
-                    self.send_image_to_api_async(frame)
+                    try:
+                        # Mã hóa ảnh
+                        success, buffer = cv2.imencode('.jpg', frame)
+                        if not success:
+                            logger.error("[ObstacleDetection] Lỗi mã hóa ảnh.")
+                            return
+                        
+                        # Gửi ảnh đến API
+                        files = {
+                            'image': ('obstacle.jpg', buffer.tobytes(), 'image/jpeg')
+                        }
+                        response = requests.post(f"{SERVER_HTTP_BASE}/detect", files=files, timeout=10)
+                        data = response.json()
+                        
+                        if data.get("success"):
+                            audio_file = data.get("data", {}).get("audio_file")
+                            if audio_file:
+                                audio_file_path = os.path.join(BASE_AUDIO_PATH, f'{audio_file}.wav')
+                                logger.info(f"[ObstacleDetection] Phát âm thanh: {audio_file_path}")
+                                speaker.play_file(audio_file_path)
+                            else:
+                                logger.warning("[ObstacleDetection] Không có file audio trong response")
+                        else:
+                            logger.warning(f"[ObstacleDetection] API trả về lỗi: {data.get('message')}")
+                            
+                    except requests.exceptions.RequestException as e:
+                        logger.error(f"[ObstacleDetection] Lỗi kết nối API: {e}")
+                    except Exception as e:
+                        logger.error(f"[ObstacleDetection] Lỗi xử lý: {e}")
                 else:
                     logger.info("[ObstacleDetection] Không có ảnh mới.")
                     

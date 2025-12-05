@@ -38,7 +38,7 @@ AUDIO_SAMPLE_RATE = 44100
 
 AUDIO_CHUNK_MS = 1000     # Giảm latency
 SILENCE_THRESHOLD = 0.2
-SILENCE_DURATION = 2.0
+SILENCE_DURATION = 3.0
 MIN_SPEECH_DURATION = 2.0
 MAX_AMP = 0.8
 
@@ -46,7 +46,7 @@ SERVER_HTTP_BASE = os.getenv("SERVER_HTTP_BASE", "http://192.168.1.11:3000")
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL")
 LLM_API_KEY = os.getenv("LLM_API_KEY")
-
+MOBILE_ID = 'mobile001'
 
 TOPICS = {
     'device_stt': f"device/{DEVICE_ID}/stt/audio",
@@ -56,7 +56,11 @@ TOPICS = {
     'device_ping': f"device/{DEVICE_ID}/ping",
     'server_tts': f"server/{DEVICE_ID}/audio",
     'server_command': f"server/{DEVICE_ID}/command",
-    'server_pong': f"server/{DEVICE_ID}/pong"
+    'server_pong': f"server/{DEVICE_ID}/pong",
+    'device_gps': f"device/{DEVICE_ID}/gps",
+    'mobile_offer': f"mobile/{MOBILE_ID}/webrtc/offer",
+    'mobile_answer': f"mobile/{MOBILE_ID}/webrtc/answer",
+    'mobile_candidate': f"mobile/{MOBILE_ID}/webrtc/candidate",
 }
 pprint({
     "BROKER_HOST": BROKER_HOST,

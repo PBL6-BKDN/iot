@@ -201,5 +201,45 @@ async def get_all_system_status() -> str:
         logger.error(f"Lỗi khi lấy system status: {e}", exc_info=True)
         return f"Lỗi: {str(e)}"
 
+@mcp.tool()
+async def initiate_sos_call() -> str:
+    """
+    Khởi tạo cuộc gọi từ thiết bị đến người thân không cần số điện thoại
+    """
+    try:
+        # Lấy MessageHandler từ container
+        from mqtt.handlers import MessageHandler
+        message_handler: MessageHandler = container.get("message_handler")
+        
+        if message_handler is None:
+            logger.error("MessageHandler chưa được khởi tạo")
+            return "Lỗi: MessageHandler chưa được khởi tạo"
+        
+        # Gọi hàm initiate_sos_call thông qua WebRTC event loop
+        # Vì hàm này là async và cần chạy trong WebRTC event loop
+        future = message_handler.webrtc.run_async(
+            message_handler.initiate_sos_call()
+        )
+        logger.info(f"Future: {future}")
+        if future:
+            try:
+                result = future.result(timeout=30)  # Timeout 30 giây (tăng từ 10s để đủ thời gian cho ICE gathering)
+                logger.info("Đã lấy kết quả cuộc gọi")
+                if result:
+                    return "Đã khởi tạo cuộc gọi từ thiết bị đến người thân thành công"
+                else:
+                    return "Không thể khởi tạo cuộc gọi. Vui lòng thử lại."
+            except Exception as e:
+                logger.error(f"Lỗi khi chờ kết quả SOS call: {e}", exc_info=True)
+                return f"Đã khởi tạo cuộc gọi nhưng có lỗi: {str(e)}"
+        else:
+            return "Không thể khởi tạo event loop cho cuộc gọi"
+    except ValueError as e:
+        logger.error(f"MessageHandler chưa được đăng ký trong container: {e}", exc_info=True)
+        return "Lỗi: MessageHandler chưa được khởi tạo. Vui lòng đảm bảo MQTT client đã được khởi động."
+    except Exception as e:
+        logger.error(f"Lỗi khi khởi tạo SOS call: {e}", exc_info=True)
+        return f"Lỗi khi khởi tạo cuộc gọi từ thiết bị đến người thân: {str(e)}"
+        
 if __name__ == "__main__":
     mcp.run(transport='sse')

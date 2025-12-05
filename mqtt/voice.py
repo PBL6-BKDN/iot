@@ -40,6 +40,16 @@ class VoiceMQTT:
     def stop_continuous_listening(self):
         """Stop continuous voice listening"""
         self.base_streamer.stop_listening()
+    
+    def pause_vad(self):
+        """Tạm dừng VAD (Voice Activity Detection) - Dùng khi có cuộc gọi WebRTC"""
+        logger.info("⏸️ Pausing VAD for WebRTC call")
+        self.base_streamer.stop_listening()
+    
+    def resume_vad(self):
+        """Tiếp tục VAD sau khi cuộc gọi WebRTC kết thúc"""
+        logger.info("▶️ Resuming VAD after WebRTC call")
+        self.start_continuous_listening()
 
     def _send_audio_chunks(self, audio_data: bytes):
         """Send audio data as chunks via MQTT"""

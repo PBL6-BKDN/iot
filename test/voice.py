@@ -2,13 +2,11 @@ from pprint import pprint
 import time
 import numpy as np
 from config import AUDIO_SAMPLE_RATE, MIC_INDEX
-from navigation.speech.voice_mic import VoiceStreamer
-from navigation.speech.voice_speaker import VoiceSpeaker
+from module.voice_mic import VoiceStreamer
+from module.voice_speaker import VoiceSpeaker
 
 import sounddevice as sd
 
-print('Audio devices:')
-pprint([f'{i}: {device}' for i, device in enumerate(sd.query_devices())])
 
 def demo_continuous_listening():
     devices = sd.query_devices()
@@ -64,4 +62,4 @@ def demo_continuous_listening():
         streamer.stop_listening()
 
 
-# demo_continuous_listening()
+demo_continuous_listening()

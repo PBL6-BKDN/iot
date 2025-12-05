@@ -8,13 +8,8 @@ from config import *
 
 
 class ObstacleDetector:
-    """Obstacle detection and MQTT publishing"""
     
     def __init__(self, mqtt_client=None):
-        self.mqtt_client = mqtt_client
-    
-    def set_mqtt_client(self, mqtt_client):
-        """Set MQTT client for publishing alerts"""
         self.mqtt_client = mqtt_client
     
     def publish_obstacle(self, distance_m: float, severity: str):
@@ -34,3 +29,4 @@ class ObstacleDetector:
         
         self.mqtt_client.publish(TOPICS['device_obstacle'], payload, qos=1)
         print(f"Published obstacle alert: {distance_m}m ({severity})")
+

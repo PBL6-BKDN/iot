@@ -4,7 +4,6 @@ MQTT Client
 """
 
 import json
-import time
 import paho.mqtt.client as mqtt
 from config import DEVICE_ID, BROKER_TRANSPORT, BROKER_HOST, BROKER_PORT, BROKER_USE_TLS, BROKER_WS_PATH, MQTT_USER, MQTT_PASS, TOPICS
 from .handlers import MessageHandler
@@ -18,9 +17,11 @@ class MQTTClient:
 
     def __init__(self):
         self.client = None
-        self.handler = MessageHandler()
         self._setup_client()
+        # Pass MQTT client to handler for WebRTC signaling
+        self.handler = MessageHandler(mqtt_client=self)
         container.register("mqtt_client", self)
+        container.register("message_handler", self.handler)
 
     def _setup_client(self):
         """Setup MQTT client with configuration"""
@@ -50,26 +51,22 @@ class MQTTClient:
         if BROKER_USE_TLS:
             self.client.tls_set()
 
-        # Last will message
-        self.client.will_set(
-            TOPICS['device_status'],
-            json.dumps({
-                "deviceId": DEVICE_ID,
-                "status": "offline",
-                "ts": int(time.time() * 1000)
-            }),
-            qos=0,
-            retain=True
-        )
 
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         """Callback when MQTT connection is established"""
-        print(f"Connected to MQTT broker with result code: {rc}")
+        logger.info(f"✅ Connected to MQTT broker with result code: {rc}")
 
         # Subscribe to server topics
         client.subscribe(TOPICS['server_tts'], qos=1)
         client.subscribe(TOPICS['server_command'], qos=1)
         client.subscribe(TOPICS['server_pong'], qos=2)
+        
+        # Subscribe to WebRTC signaling from mobile
+        client.subscribe(TOPICS['mobile_offer'], qos=1)
+        client.subscribe(TOPICS['mobile_answer'], qos=1)
+        client.subscribe(TOPICS['mobile_candidate'], qos=0)
+        
+        logger.info("📡 Subscribed to all topics including WebRTC signaling")
 
     def _on_message(self, client, userdata, msg):
         """Callback when MQTT message is received"""
@@ -115,3 +112,4 @@ class MQTTClient:
     def loop(self, timeout: float = 0.1):
         """Process MQTT messages"""
         self.client.loop(timeout=timeout)
+

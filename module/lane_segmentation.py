@@ -36,19 +36,65 @@ class LaneSegmentation:
         try:
             success, buffer = cv2.imencode('.jpg', frame)
             if not success:
-                print("[API] Lỗi mã hóa ảnh.")
+                logger.error("[API] Lỗi mã hóa ảnh.")
                 return
             files = {
                 'image': ('obstacle.jpg', buffer.tobytes(), 'image/jpeg')
             }
-            response = requests.post(f"{SERVER_HTTP_BASE}/segment", files=files)
+            
+            # Gửi request với timeout
+            response = requests.post(
+                f"{SERVER_HTTP_BASE}/segment", 
+                files=files,
+                timeout=10
+            )
+            
+            # Kiểm tra HTTP status
+            if response.status_code != 200:
+                logger.error(f"[API] HTTP {response.status_code}: {response.text[:200]}")
+                return
+            
+            # Parse JSON response
             data = response.json()
-            print(f"[API] Phản hồi: {data}")
-            message = data.get("data", "Lỗi không xác định.")
+            logger.info(f"[API] Phản hồi: {data}")
+            
+            # Lấy audio_file từ response
+            audio_file = None
+            is_safe = True  # Mặc định là an toàn
+            if isinstance(data, dict):
+                # Kiểm tra có key "data" không
+                if "data" in data and isinstance(data["data"], dict):
+                    audio_file = data["data"].get("audio_file")
+                    is_safe = data["data"].get("is_safe", True)  # Lấy is_safe, mặc định True
+
+            # Chỉ phát audio nếu KHÔNG an toàn
             speaker: VoiceSpeaker = container.get("speaker")
-            speaker.play_file(os.path.join(BASE_DIR, "audio", "processing.wav"))
+            if not is_safe:  # Nếu is_safe = False
+                if audio_file:
+                    # Đường dẫn đến file audio trong thư mục warning
+                    audio_path = os.path.join(BASE_DIR, "audio", "warning", f"{audio_file}.wav")
+                    
+                    # Kiểm tra file tồn tại
+                    if os.path.exists(audio_path):
+                        logger.info(f"[API] Phát cảnh báo: {audio_path}")
+                        speaker.play_file(audio_path)
+                    else:
+                        logger.warning(f"[API] Không tìm thấy file audio: {audio_path}")
+                else:
+                    # Không có audio_file nhưng không an toàn
+                    logger.warning("[API] Không an toàn nhưng không có audio_file")
+            else:
+                # An toàn, không cần phát audio
+                logger.info("[API] Vị trí an toàn, không cần cảnh báo")
+                
+        except requests.exceptions.Timeout:
+            logger.error("[API] Request timeout sau 10s")
+        except requests.exceptions.ConnectionError:
+            logger.error(f"[API] Không thể kết nối đến {SERVER_HTTP_BASE}/segment")
+        except requests.exceptions.JSONDecodeError as e:
+            logger.error(f"[API] Response không phải JSON: {e}")
         except Exception as e:
-            print(f"[API] Lỗi gửi ảnh: {e}")
+            logger.error(f"[API] Lỗi gửi ảnh: {e}", exc_info=True)
 
     def api_sender_thread(self):
         last_sent_time = 0
@@ -67,25 +113,25 @@ class LaneSegmentation:
                     self.adaptive_interval = min(SEND_INTERVAL_MAX, self.adaptive_interval * 1.2)
     def run(self):
         if self.running:
-            print("[LaneSegmentation] Đã đang chạy rồi!")
+            logger.warning("[LaneSegmentation] Đã đang chạy rồi!")
             return False
         self.running = True
         self._stop_event = threading.Event()
         self.thread = threading.Thread(target=self.api_sender_thread, daemon=True)
         self.thread.start()
-        print("[LaneSegmentation] Đã khởi động")
+        logger.info("[LaneSegmentation] Đã khởi động")
         return True
         
     def stop(self):
         if not self.running:
-            print("[LaneSegmentation] Chưa chạy!")
+            logger.warning("[LaneSegmentation] Chưa chạy!")
             return False
-        print("[LaneSegmentation] Đang dừng...")
+        logger.info("[LaneSegmentation] Đang dừng...")
         self.running = False
         self._stop_event.set()
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2.0)
-        print("[LaneSegmentation] Đã dừng")
+        logger.info("[LaneSegmentation] Đã dừng")
         return True
     
     def is_running(self) -> bool:

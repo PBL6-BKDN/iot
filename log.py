@@ -9,6 +9,7 @@ COLORS = {
     "ERROR": "\x1b[31m",    # Red
     "CRITICAL": "\x1b[41m", # Red background
 }
+from loguru import logger
 
 class ColorFormatter(logging.Formatter):
     def format(self, record):
@@ -16,41 +17,44 @@ class ColorFormatter(logging.Formatter):
         message = super().format(record)
         return f"{log_color}{message}{RESET}"
 
-def setup_logger(name: str = __name__, level=logging.DEBUG):
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    # Ngăn log record truyền lên logger cha gây ghi trùng
-    logger.propagate = False
+# def setup_logger(name: str = __name__, level=logging.DEBUG):
+#     logger = logging.getLogger(name)
+#     logger.setLevel(level)
+#     # Ngăn log record truyền lên logger cha gây ghi trùng
+#     logger.propagate = False
 
-    # Kiểm tra xem logger đã có handler nào chưa, nếu có, không thêm handler mới
-    if logger.hasHandlers():
-        return logger
+#     # Kiểm tra xem logger đã có handler nào chưa, nếu có, không thêm handler mới
+#     if logger.hasHandlers():
+#         return logger
 
-    # Console handler
-    ch = logging.StreamHandler()
-    ch.setLevel(level)
+#     # Console handler
+#     ch = logging.StreamHandler()
+#     ch.setLevel(level)
 
-    # File handler (max 1MB, không giữ backup)
-    fh = RotatingFileHandler(
-        "app.log", maxBytes=512, backupCount=0, encoding="utf-8"
-    )
-    fh.setLevel(level)
+#     # File handler (max 1MB, không giữ backup)
+#     fh = RotatingFileHandler(
+#         "app.log", maxBytes=512, backupCount=0, encoding="utf-8"
+#     )
+#     fh.setLevel(level)
 
-    # Formatter cho console (có màu)
-    console_formatter = ColorFormatter(
-        fmt="[%(filename)s:%(funcName)s:%(lineno)d] [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    ch.setFormatter(console_formatter)
+#     # Formatter cho console (có màu)
+#     console_formatter = ColorFormatter(
+#         fmt="[%(filename)s:%(funcName)s:%(lineno)d] [%(levelname)s] %(message)s",
+#         datefmt="%Y-%m-%d %H:%M:%S"
+#     )
+#     ch.setFormatter(console_formatter)
 
-    # Formatter cho file (không màu)
-    file_formatter = logging.Formatter(
-        fmt="[%(filename)s:%(funcName)s:%(lineno)d] [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    fh.setFormatter(file_formatter)
+#     # Formatter cho file (không màu)
+#     file_formatter = logging.Formatter(
+#         fmt="[%(filename)s:%(funcName)s:%(lineno)d] [%(levelname)s] %(message)s",
+#         datefmt="%Y-%m-%d %H:%M:%S"
+#     )
+#     fh.setFormatter(file_formatter)
 
-    logger.addHandler(ch)
-    logger.addHandler(fh)
+#     logger.addHandler(ch)
+#     logger.addHandler(fh)
 
+#     return logger
+
+def setup_logger(name: str = __name__):
     return logger
