@@ -1,9 +1,9 @@
+import asyncio
 import cv2
 import zmq
 import pickle
 import threading
 import time
-import board
 import busio
 import requests
 import adafruit_vl53l1x
@@ -15,7 +15,9 @@ import os
 from log import setup_logger
 from module.camera.camera_base import Camera
 logger = setup_logger(__name__)
-
+import board
+import busio
+import httpx
 WARNING_SOUND_FILE = os.path.join(BASE_DIR, "audio", "stop.wav")
 
 BASE_AUDIO_PATH = os.path.join(BASE_DIR, "audio", "warning")
@@ -72,30 +74,120 @@ class ObstacleDetectionSystem:
             i2c_buses = [
                 (busio.I2C(board.SCL_1, board.SDA_1), "cảm biến ngang"),
             ]
+        
+            
             self.sensors = [ToFSensor(i2c, name)
                             for i2c, name in i2c_buses]
+            
+            if len(self.sensors) == 0:
+                logger.warning("[ObstacleDetection] Không có cảm biến nào được khởi tạo")
+            else:
+                logger.info(f"[ObstacleDetection] Đã khởi tạo {len(self.sensors)} cảm biến")
+                
         except Exception as e:
-            print(f"Lỗi khi khởi tạo các cảm biến: {e}")
+            logger.error(f"[ObstacleDetection] Lỗi khi khởi tạo các cảm biến: {e}", exc_info=True)
             self.sensors = []
 
-    def send_image_to_api_async(self, frame):
-        try:
-            success, buffer = cv2.imencode('.jpg', frame)
-            if not success:
-                print("[API] Lỗi mã hóa ảnh.")
+    def send_image_to_api(self, frame):
+        """
+        Gửi ảnh đến API để nhận diện vật cản
+        Có retry logic và timeout để xử lý lỗi SSL/connection
+        """
+        max_retries = 3
+        retry_delay = 1  # giây
+        
+        for attempt in range(max_retries):
+            try:
+                # Encode ảnh
+                success, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if not success:
+                    logger.error("[API] Lỗi mã hóa ảnh.")
+                    return
+                
+                files = {
+                    'image': ('obstacle.jpg', buffer.tobytes(), 'image/jpeg')
+                }
+                
+                # Gửi request với timeout và retry
+                logger.info(f"[API] Gửi ảnh đến API (lần thử {attempt + 1}/{max_retries})...")
+                response = requests.post(
+                    f"{SERVER_HTTP_BASE}/v2/detect", 
+                    files=files,
+                    timeout=(10, 30)  # (connect timeout, read timeout) - 10s connect, 30s read
+                )
+                response.raise_for_status()  # Ném exception nếu status code không phải 2xx
+                
+                data = response.json()
+                logger.info(f"[API] Phản hồi: {data}")
+                object = data.get("caption")
+                
+                if not object:
+                    logger.warning("[API] Không có caption trong response")
+                    return
+                
+                text = f"Phía trước bạn là {object}"
+                
+                # Gửi request TTS với timeout
+                logger.info("[API] Gửi request TTS...")
+                res = requests.post(
+                    "https://viet-tts.phuocnguyn.id.vn/v1/audio/speech",
+                    headers={"Authorization": "Bearer viet-tts", "Content-Type": "application/json"},
+                    json={"model": "tts-1", "input": text, "voice": "nu-nhe-nhang", "speed": 1.0}, 
+                    timeout=(10, 60)  # 10s connect, 60s read (TTS có thể mất thời gian)
+                )
+                res.raise_for_status()
+                audio_bytes = res.content
+                
+                # Phát âm thanh
+                speaker: VoiceSpeaker = container.get("speaker")
+                if speaker:
+                    speaker.play_audio_data(audio_bytes, sample_rate=24000)
+                else:
+                    logger.warning("[API] Speaker không khả dụng")
+                
+                # Thành công, thoát khỏi retry loop
                 return
-            files = {
-                'image': ('obstacle.jpg', buffer.tobytes(), 'image/jpeg')
-            }
-            response = requests.post(f"{SERVER_HTTP_BASE}/detect", files=files)
-            data = response.json()
-            print(f"[API] Phản hồi: {data}")
-            message = data.get("data", {}).get(
-                "data", "Không phát hiện vật cản")
-            speaker: VoiceSpeaker = container.get("speaker")
-            speaker.play_file(WARNING_SOUND_FILE)
-        except Exception as e:
-            print(f"[API] Lỗi gửi ảnh: {e}")
+                
+            except requests.exceptions.SSLError as e:
+                logger.error(f"[API] Lỗi SSL (lần thử {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"[API] Đợi {retry_delay}s trước khi thử lại...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error("[API] Đã hết số lần thử, bỏ qua request này")
+                    
+            except requests.exceptions.Timeout as e:
+                logger.error(f"[API] Timeout (lần thử {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"[API] Đợi {retry_delay}s trước khi thử lại...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    logger.error("[API] Đã hết số lần thử do timeout")
+                    
+            except requests.exceptions.ConnectionError as e:
+                logger.error(f"[API] Lỗi kết nối (lần thử {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"[API] Đợi {retry_delay}s trước khi thử lại...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    logger.error("[API] Đã hết số lần thử do lỗi kết nối")
+                    
+            except requests.exceptions.HTTPError as e:
+                logger.error(f"[API] Lỗi HTTP {e.response.status_code}: {e}")
+                # Không retry cho lỗi HTTP (4xx, 5xx)
+                return
+                
+            except Exception as e:
+                logger.error(f"[API] Lỗi không xác định: {e}", exc_info=True)
+                if attempt < max_retries - 1:
+                    logger.info(f"[API] Đợi {retry_delay}s trước khi thử lại...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    logger.error("[API] Đã hết số lần thử")
 
     def detect_obstacles(self):
         distances = []
@@ -127,23 +219,25 @@ class ObstacleDetectionSystem:
                             logger.error("[ObstacleDetection] Lỗi mã hóa ảnh.")
                             return
                         
+                       
+                        self.send_image_to_api(frame)
                         # Gửi ảnh đến API
-                        files = {
-                            'image': ('obstacle.jpg', buffer.tobytes(), 'image/jpeg')
-                        }
-                        response = requests.post(f"{SERVER_HTTP_BASE}/detect", files=files, timeout=10)
-                        data = response.json()
+                        # files = {
+                        #     'image': ('obstacle.jpg', buffer.tobytes(), 'image/jpeg')
+                        # }
+                        # response = requests.post(f"{SERVER_HTTP_BASE}/detect", files=files, timeout=10)
+                        # data = response.json()
                         
-                        if data.get("success"):
-                            audio_file = data.get("data", {}).get("audio_file")
-                            if audio_file:
-                                audio_file_path = os.path.join(BASE_AUDIO_PATH, f'{audio_file}.wav')
-                                logger.info(f"[ObstacleDetection] Phát âm thanh: {audio_file_path}")
-                                speaker.play_file(audio_file_path)
-                            else:
-                                logger.warning("[ObstacleDetection] Không có file audio trong response")
-                        else:
-                            logger.warning(f"[ObstacleDetection] API trả về lỗi: {data.get('message')}")
+                        # if data.get("success"):
+                        #     audio_file = data.get("data", {}).get("audio_file")
+                        #     if audio_file:
+                        #         audio_file_path = os.path.join(BASE_AUDIO_PATH, f'{audio_file}.wav')
+                        #         logger.info(f"[ObstacleDetection] Phát âm thanh: {audio_file_path}")
+                        #         speaker.play_file(audio_file_path)
+                        #     else:
+                        #         logger.warning("[ObstacleDetection] Không có file audio trong response")
+                        # else:
+                        #     logger.warning(f"[ObstacleDetection] API trả về lỗi: {data.get('message')}")
                             
                     except requests.exceptions.RequestException as e:
                         logger.error(f"[ObstacleDetection] Lỗi kết nối API: {e}")

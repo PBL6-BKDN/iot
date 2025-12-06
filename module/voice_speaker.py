@@ -10,7 +10,8 @@ import queue
 import threading
 
 logger = setup_logger(__name__)
-
+devices = sd.query_devices()
+logger.debug(devices)
 
 def find_device_index_by_name(keyword, kind='output'):
     devices = sd.query_devices()

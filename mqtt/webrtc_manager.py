@@ -127,7 +127,7 @@ class PyAudioSourceTrack(MediaStreamTrack):
         self._pts = 0
         self._gain = gain
         self._noise_gate = noise_gate
-        self._queue = queue.Queue(maxsize=100)
+        self._queue = queue.Queue(maxsize=200)  # Increased buffer for smoother audio
         self._frame_count = 0
 
         try:
@@ -609,63 +609,36 @@ class WebRTCManager:
             
             # Audio track - Microphone sử dụng PyAudio (tương tự audio_handler.py)
             try:
-                # Lấy mic config từ config
+                # Lấy tất cả mic config từ config.py
                 try:
-                    from config import MIC_INDEX, AUDIO_SAMPLE_RATE
+                    from config import (
+                        MIC_INDEX, 
+                        AUDIO_SAMPLE_RATE, 
+                        MICROPHONE_GAIN, 
+                        MICROPHONE_NOISE_GATE,
+                        WEBRTC_FRAMES_PER_BUFFER
+                    )
+                    mic_device_index = MIC_INDEX
                     requested_rate = AUDIO_SAMPLE_RATE
-                except ImportError:
-                    requested_rate = 48000
-                
-                # Lấy gain và noise gate từ config (nếu có)
-                try:
-                    from config import MICROPHONE_GAIN, MICROPHONE_NOISE_GATE
                     mic_gain = MICROPHONE_GAIN
                     noise_gate = MICROPHONE_NOISE_GATE
-                except ImportError:
-                    # Default values optimized for WebRTC (lower gain, enable noise gate)
-                    mic_gain = 1  # Giảm gain xuống 60% để tránh distortion/noise
-                    noise_gate = 0  # Lọc noise dưới 200 (giảm tiếng hú/hiss)
-                
-                # 🎤 Jetson Nano: Tìm USB Audio Device (card 3) cho microphone
-                mic_device_index = None
-                if platform.system() == "Linux":
-                    try:
-                        import pyaudio
-                        pa = pyaudio.PyAudio()
-                        
-                        # Find USB Audio Device with input channels
-                        with SuppressALSAErrors():
-                            try:
-                                info = pa.get_host_api_info_by_index(0)
-                                numdevices = info.get('deviceCount', 0)
-                                for i in range(numdevices):
-                                    try:
-                                        device_info = pa.get_device_info_by_host_api_device_index(0, i)
-                                        name = device_info.get('name', '')
-                                        max_in = device_info.get('maxInputChannels', 0)
-                                        
-                                        # Look for USB Audio Device or hw:3,0 with input
-                                        if (max_in > 0 and 
-                                            ('USB Audio Device' in name or 'hw:3,0' in name)):
-                                            mic_device_index = i
-                                            logger.info(f"🎤 Found USB mic device: {name} (index={i})")
-                                            break
-                                    except Exception:
-                                        continue
-                            except Exception as e:
-                                logger.warning(f"Could not enumerate audio devices: {e}")
-                        
-                        pa.terminate()
-                    except ImportError:
-                        logger.warning("PyAudio not available, cannot find USB mic device")
-                    except Exception as e:
-                        logger.warning(f"Error finding USB mic device: {e}")
+                    frames_per_buffer = WEBRTC_FRAMES_PER_BUFFER
+                    logger.info(f"📋 Loaded mic config from config.py: device={mic_device_index}, rate={requested_rate}, gain={mic_gain}, noise_gate={noise_gate}, buffer={frames_per_buffer}")
+                except ImportError as e:
+                    logger.warning(f"⚠️ Failed to import mic config from config.py: {e}")
+                    # Fallback to defaults
+                    mic_device_index = None
+                    requested_rate = 48000
+                    mic_gain = 1.0
+                    noise_gate = 0
+                    frames_per_buffer = 2048  # Larger default for smoother audio
+                    logger.info(f"📋 Using default mic config: device={mic_device_index}, rate={requested_rate}, gain={mic_gain}, noise_gate={noise_gate}, buffer={frames_per_buffer}")
                 
                 # ✅ Tạo audio track với retry logic nếu device bận
                 max_retries = 5
                 retry_delay = 1.0  # 1 giây giữa các lần thử
                 
-                logger.info(f"🎤 Attempting to create audio track (device={mic_device_index}, rate={requested_rate}, gain={mic_gain}x)")
+                logger.info(f"🎤 Attempting to create audio track (device={mic_device_index}, rate={requested_rate}, gain={mic_gain}x, buffer={frames_per_buffer})")
                 
                 for attempt in range(max_retries):
                     try:
@@ -674,14 +647,14 @@ class WebRTCManager:
                         audio_track = PyAudioSourceTrack(
                             rate=requested_rate,
                             channels=1,
-                            frames_per_buffer=960,
+                            frames_per_buffer=frames_per_buffer,
                             device_index=mic_device_index,
                             gain=mic_gain,
                             noise_gate=noise_gate
                         )
                         self.pc.addTrack(audio_track)
                         self.audio_player = audio_track  # Store reference
-                        logger.info(f"✅ Audio track added using PyAudio (device={mic_device_index}, rate={requested_rate}, gain={mic_gain}x)")
+                        logger.info(f"✅ Audio track added using PyAudio (device={mic_device_index}, rate={requested_rate}, gain={mic_gain}x, buffer={frames_per_buffer})")
                         break  # Success - thoát khỏi retry loop
                         
                     except Exception as e:

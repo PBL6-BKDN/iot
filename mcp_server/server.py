@@ -1,11 +1,14 @@
 import asyncio
 import datetime
+import cv2
+import numpy as np
+from config import SERVER_HTTP_BASE
 from container import container
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from typing import List, Dict
 
-
+import httpx
 from log import setup_logger
 from module.camera.camera_base import Camera
 from module.llm.open_ai import OpenAIAgent
@@ -259,5 +262,50 @@ async def initiate_sos_call() -> str:
         logger.error(f"Lỗi khi khởi tạo SOS call: {e}", exc_info=True)
         return f"Lỗi khi khởi tạo cuộc gọi từ thiết bị đến người thân: {str(e)}"
         
+@mcp.tool()
+async def image_captioning() -> str:
+    """Mô tả hình ảnh trước mặt của người dùng bằng ngôn ngữ tự nhiên"""
+    try:
+        camera: Camera = container.get("camera")
+        if camera is None:
+            return "Lỗi: Camera chưa được khởi tạo"
+        
+        frame = camera.get_latest_frame()
+        if frame is None:
+            return "Lỗi: Không có frame nào từ camera"
+        
+        # Encode numpy array (BGR) thành JPEG bytes
+        success, encoded_image = cv2.imencode('.jpg', frame)
+        if not success:
+            return "Lỗi: Không thể encode hình ảnh"
+        
+        image_bytes = encoded_image.tobytes()
+        
+        # Gửi request đến API
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{SERVER_HTTP_BASE}/image-captioning",
+                files={
+                    "image": (f"image_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg", image_bytes, "image/jpeg")
+                }
+            )
+            response.raise_for_status()  # Ném exception nếu status code không phải 2xx
+            result = response.json()
+            
+            if "error" in result:
+                return f"Lỗi từ API: {result['error']}"
+            
+            return result.get("caption", "Không có mô tả")
+            
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Lỗi HTTP khi gọi API image-captioning: {e}", exc_info=True)
+        return f"Lỗi HTTP {e.response.status_code}: {e.response.text}"
+    except httpx.RequestError as e:
+        logger.error(f"Lỗi kết nối đến API image-captioning: {e}", exc_info=True)
+        return f"Lỗi kết nối: {str(e)}"
+    except Exception as e:
+        logger.error(f"Lỗi khi xử lý image captioning: {e}", exc_info=True)
+        return f"Lỗi: {str(e)}"
+    
 if __name__ == "__main__":
     mcp.run(transport='sse')

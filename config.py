@@ -14,7 +14,7 @@ SEND_INTERVAL = 12  # Giây, chỉ gửi ảnh mỗi 2 giây (giới hạn tần
 DIFF_THRESHOLD = 25  # Ngưỡng khác biệt, có thể điều chỉnh
 SEND_INTERVAL_MIN = 5
 SEND_INTERVAL_MAX = 10
-LANE_SEGMENTATION_FRAME_COUNT = 10  # Số lượng frames mới nhất để gửi (k frames)
+LANE_SEGMENTATION_FRAME_COUNT = 5  # Số lượng frames mới nhất để gửi (k frames)
 
 # Cấu hình MQTT
 # Địa chỉ IP của máy chủ MQTT
@@ -29,19 +29,24 @@ DEVICE_ID = "device001"
 
 BROKER_WS_PATH = os.getenv("BROKER_WS_PATH", "/")
 
-# # mic khong co day
-# MIC_INDEX = 12
-# AUDIO_SAMPLE_RATE = 48000  
+# XWF-1080P USB mic (44100 Hz)
+MIC_INDEX = 13
+AUDIO_SAMPLE_RATE = 44100
 
-# mic co day
-MIC_INDEX = 11
-AUDIO_SAMPLE_RATE = 44100  
+# # USB Composite Device (48000 Hz) - alternative
+# MIC_INDEX = 13
+# AUDIO_SAMPLE_RATE = 48000  
 
 AUDIO_CHUNK_MS = 1000     # Giảm latency
 SILENCE_THRESHOLD = 0.2
 SILENCE_DURATION = 3.0
 MIN_SPEECH_DURATION = 2.0
 MAX_AMP = 0.8
+
+# WebRTC Audio Settings
+MICROPHONE_GAIN = 1.0        # Audio gain for microphone (1.0 = no boost, 1.5 = 50% boost)
+MICROPHONE_NOISE_GATE = 100    # Noise gate threshold (filter noise < 100)
+WEBRTC_FRAMES_PER_BUFFER = 2048  # Buffer size (960=20ms, 1920=40ms, 2048=~46ms) - larger = smoother audio
 
 SERVER_HTTP_BASE = os.getenv("SERVER_HTTP_BASE", "http://192.168.1.11:3000")
 
@@ -80,5 +85,7 @@ pprint({
     "SILENCE_DURATION": SILENCE_DURATION,
     "MIN_SPEECH_DURATION": MIN_SPEECH_DURATION,
     "MAX_AMP": MAX_AMP,
-    "MIC_INDEX": MIC_INDEX
+    "MIC_INDEX": MIC_INDEX,
+    "MICROPHONE_GAIN": MICROPHONE_GAIN,
+    "MICROPHONE_NOISE_GATE": MICROPHONE_NOISE_GATE
 })

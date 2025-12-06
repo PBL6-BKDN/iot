@@ -55,7 +55,6 @@ dependencies = [
     "tqdm>=4.67.1",
     # Other
     "binho-host-adapter>=0.1.6",
-    "board>=1.0",
     "distro>=1.9.0",
     "future>=1.0.0",
     "pyftdi>=0.57.1",
@@ -67,6 +66,8 @@ dependencies = [
     "loguru>=0.7.3",
     "pyaudio>=0.2.14",
     "websockets>=15.0.1",
+    "vl53l1x>=0.0.5",
+    "pip>=25.3",
 ]
 
 [build-system]
