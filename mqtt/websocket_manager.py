@@ -122,6 +122,13 @@ class WebSocketManager:
                     if audio_b64:
                         audio_bytes = base64.b64decode(audio_b64)
                         await self.handle_audio_data(audio_bytes)
+                elif msg_type == "audio_from_mobile":
+                    # Audio from mobile device
+                    audio_b64 = data.get("data")
+                    if audio_b64:
+                        audio_bytes = base64.b64decode(audio_b64)
+                        await self.handle_audio_data(audio_bytes)
+                        logger.debug(f"🎤 Received audio from mobile: {len(audio_bytes)} bytes")
                 elif msg_type == "ping":
                     # Respond to ping
                     await websocket.send(json.dumps({"type": "pong"}))
