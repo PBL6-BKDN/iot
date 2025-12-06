@@ -77,7 +77,7 @@ class WebSocketManager:
             logger.error(f"❌ Failed to start WebSocket server: {e}", exc_info=True)
             raise
     
-    async def handle_client(self, websocket: WebSocketServerProtocol, path: str):
+    async def handle_client(self, websocket: WebSocketServerProtocol, path: str = "/"):
         """Handle new WebSocket client connection"""
         client_addr = websocket.remote_address
         logger.info(f"📱 New client connected: {client_addr}")
