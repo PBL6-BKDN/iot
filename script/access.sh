@@ -1,1 +1,0 @@
-cloudflared access tcp --hostname vnc-jetson.phuocnguyn.id.vn --url localhost:5901

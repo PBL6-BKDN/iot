@@ -14,7 +14,7 @@ class CameraDirect(Camera):
     Lớp camera sử dụng OpenCV trực tiếp thay vì qua GStreamer.
     Hỗ trợ reconnection tự động và FPS control.
     """
-    def __init__(self, camera_id=0, width=1920, height=1080, fps=30, 
+    def __init__(self, camera_id=0, width=640, height=480, fps=30, 
                  auto_reconnect=True, reconnect_delay=5.0):
         """
         Khởi tạo camera với OpenCV.

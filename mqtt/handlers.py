@@ -24,6 +24,8 @@ from log import setup_logger
 logger = setup_logger(__name__)
 
 
+import pyaudio
+       
 from .webrtc_manager import WebRTCManager
 
 
@@ -55,7 +57,7 @@ class MessageHandler:
 
     def __init__(self, mqtt_client=None):
         self.speaker = VoiceSpeaker("USB Audio Device")
-        self.gprs = GPRSConnection()
+        # self.gprs = GPRSConnection()
         self._gprs_ready = False
         self.mqtt_client = mqtt_client
         
@@ -99,17 +101,38 @@ class MessageHandler:
         """Initiate SOS emergency call from device to mobile"""
         logger.info("🆘 Initiating SOS call...")
         
-        # Pause VAD before starting call
+        # Pause VAD và giải phóng audio devices trước khi starting call
         if self.voice_mqtt:
             try:
-                self.voice_mqtt.pause_vad()
-                logger.info("⏸️ VAD paused for SOS call")
+                logger.info("🔇 Releasing audio devices before WebRTC...")
                 
-                # ✅ Đợi một chút để đảm bảo sounddevice đã close stream
-                await asyncio.sleep(1.5)  # Tăng từ 500ms → 1.5s để device được release hoàn toàn
-                logger.info("✅ Device should be released now")
+                # 1. Pause VAD
+                self.voice_mqtt.pause_vad()
+                logger.info("✅ VAD paused")
+                
+                # 2. Stop speaker stream
+                if hasattr(self, 'speaker') and self.speaker:
+                    try:
+                        self.speaker.stop_stream()
+                        logger.info("✅ Speaker stream stopped")
+                    except Exception as e:
+                        logger.warning(f"Could not stop speaker: {e}")
+                
+                # 3. Stop sounddevice globally
+                try:
+                    import sounddevice as sd
+                    sd.stop()
+                    logger.info("✅ Sounddevice stopped globally")
+                except Exception as e:
+                    logger.warning(f"Could not stop sounddevice: {e}")
+                
+                # 4. Đợi 2 giây để đảm bảo device được release hoàn toàn
+                logger.info("⏳ Waiting 2s for device release...")
+                await asyncio.sleep(2.0)
+                logger.info("✅ Audio devices should be released now")
+                
             except Exception as e:
-                logger.error(f"Error pausing VAD: {e}")
+                logger.error(f"Error releasing audio devices: {e}")
         
         # Call WebRTC manager's initiate_sos_call
         return await self.webrtc.initiate_sos_call()
@@ -163,17 +186,38 @@ class MessageHandler:
     def _run_async_offer_handler(self, sdp: str, offer_type: str):
         """Chạy async handler trong event loop riêng"""
         try:
-            # ⚠️ CRITICAL: Pause VAD TRƯỚC KHI mở WebRTC mic
+            # ⚠️ CRITICAL: Giải phóng audio devices TRƯỚC KHI mở WebRTC mic
             if self.voice_mqtt:
                 try:
-                    self.voice_mqtt.pause_vad()
-                    logger.info("⏸️ VAD paused BEFORE WebRTC initialization")
+                    logger.info("🔇 Releasing audio devices before WebRTC (incoming call)...")
                     
-                    # ✅ Đợi một chút để đảm bảo sounddevice đã close stream
-                    time.sleep(0.5)  # 500ms để device được release
-                    logger.info("✅ Device should be released now")
+                    # 1. Pause VAD
+                    self.voice_mqtt.pause_vad()
+                    logger.info("✅ VAD paused")
+                    
+                    # 2. Stop speaker stream
+                    if hasattr(self, 'speaker') and self.speaker:
+                        try:
+                            self.speaker.stop_stream()
+                            logger.info("✅ Speaker stream stopped")
+                        except Exception as e:
+                            logger.warning(f"Could not stop speaker: {e}")
+                    
+                    # 3. Stop sounddevice globally
+                    try:
+                        import sounddevice as sd
+                        sd.stop()
+                        logger.info("✅ Sounddevice stopped globally")
+                    except Exception as e:
+                        logger.warning(f"Could not stop sounddevice: {e}")
+                    
+                    # 4. Đợi 2 giây để đảm bảo device được release hoàn toàn
+                    logger.info("⏳ Waiting 2s for device release...")
+                    time.sleep(2.0)
+                    logger.info("✅ Audio devices should be released now")
+                    
                 except Exception as e:
-                    logger.error(f"Error pausing VAD: {e}")
+                    logger.error(f"Error releasing audio devices: {e}")
             
             # Sử dụng event loop riêng của WebRTC Manager
             future = self.webrtc.run_async(self.webrtc.handle_offer(sdp, offer_type))
@@ -267,14 +311,6 @@ class MessageHandler:
         """Callback khi nhận audio track từ mobile - phát ra loa sử dụng PyAudio (tương tự audio_handler.py)"""
         try:
             logger.info(f"🎧 Receiving audio from mobile: {track.id}")
-            
-            # Import PyAudio
-            try:
-                import pyaudio
-            except ImportError:
-                logger.warning("PyAudio not installed - falling back to VoiceSpeaker")
-                await self._handle_incoming_audio_fallback(track)
-                return
 
             # Initialize PyAudio nếu chưa có
             if self._pyaudio_out is None:

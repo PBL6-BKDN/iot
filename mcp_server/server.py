@@ -2,6 +2,7 @@ import asyncio
 import datetime
 from container import container
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from typing import List, Dict
 
 
@@ -12,6 +13,23 @@ from module.lane_segmentation import LaneSegmentation
 from module.obstacle_detection import ObstacleDetectionSystem
 
 mcp = FastMCP(name="PBL6_MCP_IOT")
+
+# Cho phép domain bên ngoài (vd: mcp.phuocnguyn.id.vn) truy cập SSE
+# và bỏ chặn Invalid Host header
+mcp.settings.transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=[
+        "mcp.phuocnguyn.id.vn",
+        "mcp.phuocnguyn.id.vn:3000",
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    ],
+    allowed_origins=[
+        "https://mcp.phuocnguyn.id.vn",
+        "http://mcp.phuocnguyn.id.vn",
+    ],
+)
 logger = setup_logger(__name__)
 
 # ============ CAMERA & AI TOOLS ============

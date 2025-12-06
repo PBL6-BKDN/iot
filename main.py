@@ -17,6 +17,7 @@ from module.lane_segmentation import LaneSegmentation
 def main():
     """Main application loop"""
     # Initialize MQTT client
+    
     mqtt_client = MQTTClient()
     mqtt_client.connect()
     
@@ -38,8 +39,8 @@ def main():
     # lane_segmentation = LaneSegmentation()
     # lane_segmentation.run()
     # status = DeviceStatus(mqtt_client)
-    mcp.run(transport='sse')
     
+    mcp.run(transport='sse')
     #gps_service = GPSService()
     # gps_service.run()
     
@@ -92,8 +93,7 @@ def main():
             
     #         time.sleep(0.05)  # Check every 50ms for better responsiveness
     try:
-        while True:
-            pass
+        pass
         
     except KeyboardInterrupt as e:
         logger.error(f"Lỗi: {e}", exc_info=True)

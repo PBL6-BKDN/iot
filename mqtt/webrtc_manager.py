@@ -423,6 +423,15 @@ class WebRTCManager:
             }
             logger.info(f"{emoji.get(state, '❓')} Connection state: {state}")
             
+            # Cleanup khi connection kết thúc
+            if state in ["closed", "failed"]:
+                logger.info(f"🧹 Connection ended ({state}), cleaning up...")
+                # Gọi close để giải phóng resources (đặc biệt là audio device)
+                try:
+                    await self.close()
+                except Exception as e:
+                    logger.error(f"Error during cleanup: {e}", exc_info=True)
+            
             if self.on_connection_state_change:
                 try:
                     if asyncio.iscoroutinefunction(self.on_connection_state_change):
@@ -653,11 +662,15 @@ class WebRTCManager:
                         logger.warning(f"Error finding USB mic device: {e}")
                 
                 # ✅ Tạo audio track với retry logic nếu device bận
-                max_retries = 3
-                retry_delay = 0.5  # 500ms giữa các lần thử
+                max_retries = 5
+                retry_delay = 1.0  # 1 giây giữa các lần thử
+                
+                logger.info(f"🎤 Attempting to create audio track (device={mic_device_index}, rate={requested_rate}, gain={mic_gain}x)")
                 
                 for attempt in range(max_retries):
                     try:
+                        logger.debug(f"🔄 Audio track creation attempt {attempt+1}/{max_retries}...")
+                        
                         audio_track = PyAudioSourceTrack(
                             rate=requested_rate,
                             channels=1,
@@ -673,11 +686,16 @@ class WebRTCManager:
                         
                     except Exception as e:
                         if "[Errno -9985]" in str(e) and attempt < max_retries - 1:
-                            logger.warning(f"⚠️ Device unavailable (attempt {attempt+1}/{max_retries}), retrying in {retry_delay}s...")
+                            logger.warning(f"⚠️ Device unavailable (attempt {attempt+1}/{max_retries}): {e}")
+                            logger.warning(f"   Possible causes: VoiceSpeaker or AudioHandler still using device")
+                            logger.warning(f"   Retrying in {retry_delay}s...")
                             import time as time_module
                             time_module.sleep(retry_delay)
                         else:
                             # Lần thử cuối hoặc lỗi khác
+                            logger.critical(f"❌ FAILED to create audio track after {max_retries} attempts!")
+                            logger.critical(f"   Error: {e}")
+                            logger.critical(f"   Debug: Check if VoiceSpeaker/AudioHandler released the device")
                             raise
                             
             except ImportError:
@@ -1057,29 +1075,64 @@ class WebRTCManager:
         logger.info(f"✅ Finished processing buffered candidates: {processed} added, {skipped} skipped, {errors} errors (total={total})")
     
     async def close(self):
-        """Đóng peer connection"""
+        """Đóng peer connection và giải phóng audio devices"""
         try:
-            if self.pc and self.pc.connectionState != "closed":
-                await self.pc.close()
-                logger.info("🔒 Peer connection closed")
+            logger.info("🔒 Closing WebRTC connection...")
             
-            # Stop video track (CameraVideoTrack không cần stop vì camera được quản lý bởi container)
+            # Stop audio player FIRST để giải phóng microphone device
+            if self.audio_player:
+                try:
+                    logger.info("🎤 Stopping audio player (releasing microphone)...")
+                    self.audio_player.stop()
+                    self.audio_player = None
+                    logger.info("✅ Audio player stopped and released")
+                except Exception as e:
+                    logger.error(f"Error stopping audio player: {e}", exc_info=True)
+            
+            # Stop video track
             if self.video_player:
                 try:
                     if hasattr(self.video_player, 'stop'):
                         self.video_player.stop()
-                except Exception:
-                    pass
+                    self.video_player = None
+                except Exception as e:
+                    logger.error(f"Error stopping video player: {e}")
             
-            # Stop audio player
-            if self.audio_player:
+            # Close peer connection (this will cleanup ICE/STUN/TURN)
+            if self.pc:
                 try:
-                    self.audio_player.stop()
-                except Exception:
-                    pass
+                    # Cancel all pending tasks in peer connection
+                    if hasattr(self.pc, '_RTCPeerConnection__iceTransports'):
+                        for transport in self.pc._RTCPeerConnection__iceTransports:
+                            if hasattr(transport, '_connection'):
+                                conn = transport._connection
+                                # Stop ICE gathering
+                                if hasattr(conn, 'close'):
+                                    try:
+                                        await conn.close()
+                                    except Exception:
+                                        pass
+                    
+                    # Now close peer connection
+                    if self.pc.connectionState != "closed":
+                        await self.pc.close()
+                        logger.info("✅ Peer connection closed")
+                    
+                    self.pc = None
+                except Exception as e:
+                    logger.error(f"Error closing peer connection: {e}", exc_info=True)
+                    self.pc = None
+            
+            # Clear buffered candidates
+            self.pending_ice_candidates.clear()
+            
+            # Đợi một chút để device được giải phóng hoàn toàn
+            await asyncio.sleep(0.5)
+            
+            logger.info("✅ WebRTC cleanup complete - devices released")
                     
         except Exception as e:
-            logger.error(f"Error closing peer connection: {e}")
+            logger.error(f"Error closing peer connection: {e}", exc_info=True)
     
     def start_event_loop(self):
         """Khởi động event loop riêng cho WebRTC trong background thread"""

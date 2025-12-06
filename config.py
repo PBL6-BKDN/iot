@@ -14,6 +14,7 @@ SEND_INTERVAL = 12  # Giây, chỉ gửi ảnh mỗi 2 giây (giới hạn tần
 DIFF_THRESHOLD = 25  # Ngưỡng khác biệt, có thể điều chỉnh
 SEND_INTERVAL_MIN = 5
 SEND_INTERVAL_MAX = 10
+LANE_SEGMENTATION_FRAME_COUNT = 10  # Số lượng frames mới nhất để gửi (k frames)
 
 # Cấu hình MQTT
 # Địa chỉ IP của máy chủ MQTT
