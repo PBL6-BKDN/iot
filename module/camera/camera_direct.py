@@ -1,5 +1,6 @@
 import time
-import threading
+import multiprocessing as mp
+from multiprocessing import shared_memory
 from typing import Optional
 import numpy as np
 import cv2
@@ -9,153 +10,178 @@ from .camera_base import Camera
 from container import container
 logger = setup_logger(__name__)
 
+
+def _camera_worker(
+    camera_id, width, height, target_fps, auto_reconnect, reconnect_delay,
+    stop_event: mp.Event, frame_shape, frame_dtype, shm_name: str
+):
+    """
+    Worker process để đọc frames từ camera.
+    Chạy trong process riêng để bypass GIL.
+    """
+    import cv2
+    import numpy as np
+    from multiprocessing import shared_memory
+    
+    frame_delay = 1.0 / target_fps if target_fps > 0 else 0
+    last_frame_time = 0
+    frame_count = 0
+    error_count = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 10
+    
+    # Attach to shared memory
+    try:
+        shm = shared_memory.SharedMemory(name=shm_name)
+        shared_frame = np.ndarray(frame_shape, dtype=frame_dtype, buffer=shm.buf)
+    except Exception as e:
+        print(f"[Camera Worker] Không thể attach shared memory: {e}")
+        return
+    
+    # Mở camera trong worker process
+    cap = None
+    try:
+        print(f"[Camera Worker] Đang mở camera {camera_id}...")
+        cap = cv2.VideoCapture(camera_id)
+        
+        if not cap.isOpened():
+            print(f"[Camera Worker] Failed to open camera {camera_id}")
+            return
+        
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        cap.set(cv2.CAP_PROP_FPS, target_fps)
+        
+        actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        actual_fps = cap.get(cv2.CAP_PROP_FPS)
+        print(f"[Camera Worker] Camera đã mở: {actual_width}x{actual_height} @ {actual_fps} FPS")
+        
+        while not stop_event.is_set():
+            try:
+                # FPS control
+                current_time = time.time()
+                elapsed = current_time - last_frame_time
+                if elapsed < frame_delay:
+                    time.sleep(frame_delay - elapsed)
+                
+                ret, frame = cap.read()
+                if not ret:
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors and auto_reconnect:
+                        print("[Camera Worker] Đang thử reconnect...")
+                        cap.release()
+                        time.sleep(reconnect_delay)
+                        cap = cv2.VideoCapture(camera_id)
+                        if cap.isOpened():
+                            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                            consecutive_errors = 0
+                    else:
+                        time.sleep(0.1)
+                    continue
+                
+                # Resize frame nếu cần để match shared memory shape
+                if frame.shape != frame_shape:
+                    frame = cv2.resize(frame, (frame_shape[1], frame_shape[0]))
+                
+                # Copy frame vào shared memory
+                consecutive_errors = 0
+                np.copyto(shared_frame, frame)
+                frame_count += 1
+                last_frame_time = time.time()
+                
+            except Exception as e:
+                error_count += 1
+                print(f"[Camera Worker] Lỗi: {e}")
+                time.sleep(0.1)
+                
+    finally:
+        if cap:
+            cap.release()
+        shm.close()
+        print(f"[Camera Worker] Đã dừng. Frames: {frame_count}, Errors: {error_count}")
+
+
 class CameraDirect(Camera):
     """
-    Lớp camera sử dụng OpenCV trực tiếp thay vì qua GStreamer.
-    Hỗ trợ reconnection tự động và FPS control.
+    Lớp camera sử dụng multiprocessing để bypass GIL.
+    Frames được share qua shared memory.
     """
     def __init__(self, camera_id=0, width=640, height=480, fps=30, 
                  auto_reconnect=True, reconnect_delay=5.0):
         """
-        Khởi tạo camera với OpenCV.
+        Khởi tạo camera với multiprocessing.
         
         Args:
-            camera_id: ID của camera (thường là 0, 1, 2,... hoặc đường dẫn video)
+            camera_id: ID của camera (thường là 0, 1, 2,...)
             width: Chiều rộng mong muốn
             height: Chiều cao mong muốn
             fps: Frames per second mục tiêu
             auto_reconnect: Tự động kết nối lại khi mất kết nối
             reconnect_delay: Thời gian chờ giữa các lần thử kết nối lại (giây)
         """
-        # Khởi tạo các biến thành viên
-        self._latest_frame = [None]
-        self._stop_event = threading.Event()
-        self._thread = None
+        self._stop_event = mp.Event()
+        self._process: Optional[mp.Process] = None
         self._is_running = False
         self.camera_id = camera_id
         self.width = width
         self.height = height
         self.target_fps = fps
-        self.frame_delay = 1.0 / fps if fps > 0 else 0
         self.auto_reconnect = auto_reconnect
         self.reconnect_delay = reconnect_delay
-        self._last_frame_time = 0
         self._frame_count = 0
         self._error_count = 0
         
-        # Mở camera
-        self._open_camera()
+        # Tạo shared memory cho frame
+        self._frame_shape = (height, width, 3)
+        self._frame_dtype = np.uint8
+        frame_size = int(np.prod(self._frame_shape) * np.dtype(self._frame_dtype).itemsize)
         
-        # Chạy thread đọc camera
+        self._shm = shared_memory.SharedMemory(create=True, size=frame_size)
+        self._shared_frame = np.ndarray(self._frame_shape, dtype=self._frame_dtype, buffer=self._shm.buf)
+        self._shared_frame.fill(0)  # Initialize với zeros
+        
+        container.register("camera", self)
+        logger.info(f"[Camera Direct] Đã khởi tạo shared memory: {self._frame_shape}")
+        
+        # Chạy process đọc camera
         self.run()
     
-    def _open_camera(self):
-        """Mở camera và thiết lập các thông số."""
-        logger.info(f"[Camera Direct] Đang mở camera {self.camera_id}...")
-        self.cap = cv2.VideoCapture(self.camera_id)
-        
-        if not self.cap.isOpened():
-            raise ValueError(f"Failed to open camera {self.camera_id}")
-        
-        # Thiết lập độ phân giải
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        self.cap.set(cv2.CAP_PROP_FPS, self.target_fps)
-        
-        # Lấy độ phân giải thực tế
-        actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
-        
-        logger.info(f"[Camera Direct] Camera đã mở: {actual_width}x{actual_height} @ {actual_fps} FPS")
-        
-        # Thiết lập các thông số khác nếu cần
-        # self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
-        # self.cap.set(cv2.CAP_PROP_CONTRAST, 40)
-        # self.cap.set(cv2.CAP_PROP_SATURATION, 50)
-        # self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Giảm buffer để giảm độ trễ
-        container.register("camera", self)
-    
-    def _reconnect(self):
-        """Thử kết nối lại camera."""
-        logger.warning("[Camera Direct] Đang thử kết nối lại camera...")
-        try:
-            if self.cap:
-                self.cap.release()
-            time.sleep(self.reconnect_delay)
-            self._open_camera()
-            self._error_count = 0
-            logger.info("[Camera Direct] Kết nối lại camera thành công")
-            return True
-        except Exception as e:
-            logger.error(f"[Camera Direct] Lỗi khi kết nối lại: {e}")
-            return False
-    
     def run(self):
-        """Bắt đầu thread đọc frame từ camera."""
+        """Bắt đầu process đọc frame từ camera."""
         if self._is_running:
             logger.warning("[Camera Direct] Camera đã đang chạy")
             return
-            
-        def _run():
-            consecutive_errors = 0
-            max_consecutive_errors = 10
-            
-            while not self._stop_event.is_set():
-                try:
-                    # FPS control
-                    current_time = time.time()
-                    elapsed = current_time - self._last_frame_time
-                    if elapsed < self.frame_delay:
-                        time.sleep(self.frame_delay - elapsed)
-                    
-                    ret, frame = self.cap.read()
-                    if not ret:
-                        consecutive_errors += 1
-                        logger.warning(f"[Camera Direct] Không đọc được frame (lỗi liên tiếp: {consecutive_errors})")
-                        
-                        # Nếu lỗi quá nhiều, thử reconnect
-                        if consecutive_errors >= max_consecutive_errors and self.auto_reconnect:
-                            if self._reconnect():
-                                consecutive_errors = 0
-                            else:
-                                time.sleep(1.0)
-                        else:
-                            time.sleep(0.1)
-                        continue
-                    
-                    # Reset error counter khi đọc thành công
-                    consecutive_errors = 0
-                    self._latest_frame[0] = frame
-                    self._frame_count += 1
-                    self._last_frame_time = time.time()
-                    
-                except Exception as e:
-                    self._error_count += 1
-                    logger.error(f"[Camera Direct] Lỗi nhận frame: {e}", exc_info=True)
-                    time.sleep(0.1)
         
-        self._thread = threading.Thread(target=_run, daemon=True)
-        self._thread.start()
+        self._stop_event.clear()
+        self._process = mp.Process(
+            target=_camera_worker,
+            args=(
+                self.camera_id, self.width, self.height, self.target_fps,
+                self.auto_reconnect, self.reconnect_delay, self._stop_event,
+                self._frame_shape, self._frame_dtype, self._shm.name
+            ),
+            daemon=True
+        )
+        self._process.start()
         self._is_running = True
-        logger.info("[Camera Direct] Đã khởi động camera thread")
+        logger.info(f"[Camera Direct] Đã khởi động camera process (PID: {self._process.pid})")
     
     def get_latest_frame(self) -> Optional[np.ndarray]:
         """
-        Lấy frame mới nhất từ camera.
+        Lấy frame mới nhất từ camera (copy từ shared memory).
         
         Returns:
             Frame dưới dạng numpy array hoặc None nếu chưa có frame
         """
-        return self._latest_frame[0]
+        if not self._is_running:
+            return None
+        # Return một copy để tránh race condition
+        return self._shared_frame.copy()
     
     def get_stats(self) -> dict:
-        """
-        Lấy thống kê về camera.
-        
-        Returns:
-            Dictionary chứa các thông tin thống kê
-        """
+        """Lấy thống kê về camera."""
         return {
             'frame_count': self._frame_count,
             'error_count': self._error_count,
@@ -166,7 +192,7 @@ class CameraDirect(Camera):
     
     def is_running(self) -> bool:
         """Kiểm tra xem camera có đang chạy không."""
-        return self._is_running and self._thread and self._thread.is_alive()
+        return self._is_running and self._process is not None and self._process.is_alive()
     
     def stop(self):
         """Dừng camera và giải phóng tài nguyên."""
@@ -177,17 +203,25 @@ class CameraDirect(Camera):
         self._stop_event.set()
         self._is_running = False
         
-        if self._thread and self._thread.is_alive():
+        if self._process and self._process.is_alive():
             try:
-                self._thread.join(timeout=2.0)
-                if self._thread.is_alive():
-                    logger.warning("[Camera Direct] Thread không dừng sau 2 giây")
+                self._process.join(timeout=3.0)
+                if self._process.is_alive():
+                    logger.warning("[Camera Direct] Process không dừng, đang terminate...")
+                    self._process.terminate()
+                    self._process.join(timeout=1.0)
             except Exception as e:
-                logger.error(f"[Camera Direct] Lỗi khi join thread: {e}")
+                logger.error(f"[Camera Direct] Lỗi khi dừng process: {e}")
         
-        if self.cap:
-            self.cap.release()
-            logger.info(f"[Camera Direct] Đã giải phóng camera. Stats: {self.get_stats()}")
+        # Cleanup shared memory
+        try:
+            self._shm.close()
+            self._shm.unlink()
+            logger.info("[Camera Direct] Đã giải phóng shared memory")
+        except Exception as e:
+            logger.error(f"[Camera Direct] Lỗi khi cleanup shared memory: {e}")
+        
+        logger.info(f"[Camera Direct] Đã dừng. Stats: {self.get_stats()}")
     
     def __enter__(self):
         """Context manager entry."""
@@ -219,8 +253,6 @@ if __name__ == "__main__":
                 elif key == ord('s'):
                     stats = camera.get_stats()
                     print(f"\n=== Camera Stats ===")
-                    print(f"Frames: {stats['frame_count']}")
-                    print(f"Errors: {stats['error_count']}")
                     print(f"Running: {stats['is_running']}")
                     print(f"Target FPS: {stats['target_fps']}")
                     print(f"Camera ID: {stats['camera_id']}")

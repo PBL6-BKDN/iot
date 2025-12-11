@@ -2,7 +2,7 @@ import asyncio
 import cv2
 import zmq
 import pickle
-import threading
+import multiprocessing as mp
 import time
 import busio
 import requests
@@ -64,8 +64,8 @@ class ObstacleDetectionSystem:
         self.sensors = []
         self.last_alert_time = 0
         self.alert_interval = 5
-        self._stop_event = threading.Event()
-        self._thread = None
+        self._stop_event = mp.Event()
+        self._process = None
         self.setup_sensors()
         container.register("obstacle_detection_system", self)
 
@@ -246,36 +246,42 @@ class ObstacleDetectionSystem:
                 else:
                     logger.info("[ObstacleDetection] Không có ảnh mới.")
                     
+    def _run_loop(self):
+        """Main loop chạy trong worker process"""
+        # Re-setup sensors trong worker process vì hardware không share
+        self.setup_sensors()
+        try:
+            while not self._stop_event.is_set():
+                self.detect_obstacles()
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            logger.info("[ObstacleDetection] Dừng hệ thống.")
+        finally:
+            self.cleanup()
+    
     def run(self):
-        if self._thread and self._thread.is_alive():
+        if self._process and self._process.is_alive():
             logger.warning("[ObstacleDetection] Đã đang chạy rồi!")
             return False
-            
-        def _run():
-            try:
-                while not self._stop_event.is_set():
-                    self.detect_obstacles()
-                    time.sleep(0.5)
-            except KeyboardInterrupt:
-                logger.info("[ObstacleDetection] Dừng hệ thống.")
-            finally:
-                self.cleanup()
-        self._stop_event.clear()
         
-        self._thread = threading.Thread(target=_run, daemon=True)
-        self._thread.start()
-        logger.info("[ObstacleDetection] Đã khởi động")
+        self._stop_event.clear()
+        self._process = mp.Process(target=self._run_loop, daemon=True)
+        self._process.start()
+        logger.info(f"[ObstacleDetection] Đã khởi động (PID: {self._process.pid})")
         return True
     
     def stop(self):
-        if not self._thread or not self._thread.is_alive():
+        if not self._process or not self._process.is_alive():
             logger.warning("[ObstacleDetection] Chưa chạy!")
             return False
         logger.info("[ObstacleDetection] Đang dừng")
         self._stop_event.set()
-        if self._thread and self._thread.is_alive():
+        if self._process and self._process.is_alive():
             try:
-                self._thread.join(timeout=2.0)
+                self._process.join(timeout=2.0)
+                if self._process.is_alive():
+                    logger.warning("[ObstacleDetection] Process không dừng, đang terminate...")
+                    self._process.terminate()
             except Exception:
                 pass
         logger.info("[ObstacleDetection] Đã dừng")
@@ -283,7 +289,7 @@ class ObstacleDetectionSystem:
     
     def is_running(self) -> bool:
         """Kiểm tra trạng thái hoạt động"""
-        return self._thread is not None and self._thread.is_alive()
+        return self._process is not None and self._process.is_alive()
       
     def cleanup(self):
         for sensor in self.sensors:

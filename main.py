@@ -2,6 +2,8 @@
 Main MQTT Application
 =====================
 """
+import multiprocessing as mp
+
 from module.camera.camera_direct import CameraDirect
 from mqtt import MQTTClient, VoiceMQTT, GPSMQTT
 from log import setup_logger
