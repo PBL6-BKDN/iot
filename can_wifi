@@ -1,0 +1,17 @@
+IN-USE  BSSID              SSID          MODE   CHAN  RATE       SIGNAL  BARS  SECURITY 
+[32m*[0m       [32mD6:D8:10:25:80:FD[0m  [32mNguyenPro[0m     [32mInfra[0m  [32m11[0m    [32m16 Mbit/s[0m  [32m100[0m     [32m▂▄▆█[0m  [32mWPA2[0m     
+[32m [0m       [32mF2:1B:65:EE:1B:DF[0m  [32mStupid ducky[0m  [32mInfra[0m  [32m11[0m    [32m44 Mbit/s[0m  [32m84[0m      [32m▂▄▆█[0m  [32mWPA2[0m     
+[33m [0m       [33mB4:79:C8:15:4A:78[0m  [33mGiangVien[0m     [33mInfra[0m  [33m1[0m     [33m16 Mbit/s[0m  [33m77[0m      [33m▂▄▆_[0m  [33mWPA2[0m     
+[33m [0m       [33mB4:79:C8:55:4A:78[0m  [33mGuest[0m         [33mInfra[0m  [33m1[0m     [33m16 Mbit/s[0m  [33m77[0m      [33m▂▄▆_[0m  [33m--[0m       
+[33m [0m       [33m1A:06:9C:EE:49:1C[0m  [33mNet[0m           [33mInfra[0m  [33m6[0m     [33m16 Mbit/s[0m  [33m68[0m      [33m▂▄▆_[0m  [33mWPA2[0m     
+[33m [0m       [33mB4:79:C8:14:86:48[0m  [33mGiangVien[0m     [33mInfra[0m  [33m11[0m    [33m16 Mbit/s[0m  [33m68[0m      [33m▂▄▆_[0m  [33mWPA2[0m     
+[33m [0m       [33mB4:79:C8:54:86:48[0m  [33mGuest[0m         [33mInfra[0m  [33m11[0m    [33m16 Mbit/s[0m  [33m68[0m      [33m▂▄▆_[0m  [33m--[0m       
+[33m [0m       [33mE6:8B:DA:16:3E:DB[0m  [33mCHU THANG[0m     [33mInfra[0m  [33m9[0m     [33m44 Mbit/s[0m  [33m63[0m      [33m▂▄▆_[0m  [33mWPA2[0m     
+[33m [0m       [33m66:49:DD:39:94:9B[0m  [33mNokia3310[0m     [33mInfra[0m  [33m11[0m    [33m44 Mbit/s[0m  [33m62[0m      [33m▂▄▆_[0m  [33mWPA2[0m     
+[33m [0m       [33mB4:79:C8:14:90:A8[0m  [33mGiangVien[0m     [33mInfra[0m  [33m11[0m    [33m16 Mbit/s[0m  [33m56[0m      [33m▂▄▆_[0m  [33mWPA2[0m     
+[35m [0m       [35m82:F6:12:A5:3B:F5[0m  [35mSaimonV[0m       [35mInfra[0m  [35m1[0m     [35m44 Mbit/s[0m  [35m50[0m      [35m▂▄__[0m  [35mWPA2[0m     
+[35m [0m       [35mB4:79:C8:54:90:A8[0m  [35mGuest[0m         [35mInfra[0m  [35m11[0m    [35m16 Mbit/s[0m  [35m48[0m      [35m▂▄__[0m  [35m--[0m       
+[35m [0m       [35mB4:79:C8:14:91:28[0m  [35mGiangVien[0m     [35mInfra[0m  [35m6[0m     [35m16 Mbit/s[0m  [35m46[0m      [35m▂▄__[0m  [35mWPA2[0m     
+[35m [0m       [35mB4:79:C8:54:91:28[0m  [35mGuest[0m         [35mInfra[0m  [35m6[0m     [35m16 Mbit/s[0m  [35m46[0m      [35m▂▄__[0m  [35m--[0m       
+[35m [0m       [35mB4:79:C8:54:94:68[0m  [35mGuest[0m         [35mInfra[0m  [35m6[0m     [35m16 Mbit/s[0m  [35m38[0m      [35m▂▄__[0m  [35m--[0m       
+[35m [0m       [35mB4:79:C8:14:94:68[0m  [35mGiangVien[0m     [35mInfra[0m  [35m6[0m     [35m16 Mbit/s[0m  [35m35[0m      [35m▂▄__[0m  [35mWPA2[0m     

@@ -29,23 +29,23 @@ DEVICE_ID = "device001"
 
 BROKER_WS_PATH = os.getenv("BROKER_WS_PATH", "/")
 
-# XWF-1080P USB mic (44100 Hz)
-MIC_INDEX = 13
-AUDIO_SAMPLE_RATE = 44100
+# USB Composite Device mic (48000 Hz)
+MIC_INDEX = 11
+AUDIO_SAMPLE_RATE = 48000
 
-# # USB Composite Device (48000 Hz) - alternative
+# # XWF-1080P USB mic (44100 Hz) - alternative
 # MIC_INDEX = 13
-# AUDIO_SAMPLE_RATE = 48000  
+# AUDIO_SAMPLE_RATE = 44100  
 
 AUDIO_CHUNK_MS = 1000     # Giảm latency
-SILENCE_THRESHOLD = 0.2
-SILENCE_DURATION = 3.0
-MIN_SPEECH_DURATION = 2.0
+SILENCE_THRESHOLD = 0.2  # Giảm ngưỡng để dễ phát hiện giọng nói hơn
+SILENCE_DURATION = 2.0    # Giảm thời gian im lặng để phản hồi nhanh hơn
+MIN_SPEECH_DURATION = 0.8  # Giảm thời gian tối thiểu để chấp nhận câu ngắn hơn
 MAX_AMP = 0.8
 
 # WebRTC Audio Settings
-MICROPHONE_GAIN = 1.0        # Audio gain for microphone (1.0 = no boost, 1.5 = 50% boost)
-MICROPHONE_NOISE_GATE = 100    # Noise gate threshold (filter noise < 100)
+MICROPHONE_GAIN = 1.1        # Audio gain for microphone (1.0 = no boost, 1.5 = 50% boost)
+MICROPHONE_NOISE_GATE = 40    # Noise gate threshold (filter noise < 100)
 WEBRTC_FRAMES_PER_BUFFER = 2048  # Buffer size (960=20ms, 1920=40ms, 2048=~46ms) - larger = smoother audio
 
 SERVER_HTTP_BASE = os.getenv("SERVER_HTTP_BASE", "http://192.168.1.11:3000")

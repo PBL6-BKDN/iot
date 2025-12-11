@@ -317,6 +317,9 @@ class WebRTCManager:
         # Cache for TURN credentials
         self.cached_ice_servers = None
         
+        # Cleanup flag
+        self._is_closing = False
+        
         logger.info(f"✅ WebRTCManager initialized for device {device_id}")
     
     def set_mqtt_client(self, mqtt_client: "MQTTClient"):
@@ -412,6 +415,8 @@ class WebRTCManager:
         
         @self.pc.on("connectionstatechange")
         async def on_connectionstatechange():
+            if not self.pc:
+                return
             state = self.pc.connectionState
             emoji = {
                 "new": "🆕", 
@@ -424,7 +429,7 @@ class WebRTCManager:
             logger.info(f"{emoji.get(state, '❓')} Connection state: {state}")
             
             # Cleanup khi connection kết thúc
-            if state in ["closed", "failed"]:
+            if state in ["closed", "failed", "disconnected"]:
                 logger.info(f"🧹 Connection ended ({state}), cleaning up...")
                 # Gọi close để giải phóng resources (đặc biệt là audio device)
                 try:
@@ -461,6 +466,8 @@ class WebRTCManager:
         
         @self.pc.on("iceconnectionstatechange")
         async def on_iceconnectionstatechange():
+            if not self.pc:
+                return
             ice_state = self.pc.iceConnectionState
             emoji = {
                 "new": "🆕", 
@@ -516,15 +523,17 @@ class WebRTCManager:
         
         @self.pc.on("icegatheringstatechange")
         async def on_icegatheringstatechange():
+            if not self.pc:
+                return
             state = self.pc.iceGatheringState
             logger.info(f"📡 ICE gathering state: {state}")
             
             if state == "complete":
-                # Debug: Check local description
+                # Debug: Check local description (may be set later by setLocalDescription)
                 if self.pc.localDescription:
-                    logger.debug(f"Local SDP has {len(self.pc.localDescription.sdp)} chars")
+                    logger.debug(f"✅ Local SDP ready: {len(self.pc.localDescription.sdp)} chars")
                 else:
-                    logger.warning("⚠️ No local description after ICE gathering complete")
+                    logger.debug("⏳ Local description not set yet (will be set by setLocalDescription)")
         
         @self.pc.on("icecandidate")
         async def on_icecandidate(candidate):
@@ -1050,17 +1059,48 @@ class WebRTCManager:
     async def close(self):
         """Đóng peer connection và giải phóng audio devices"""
         try:
+            # Tránh cleanup nhiều lần
+            if hasattr(self, '_is_closing') and self._is_closing:
+                logger.debug("⏭️ Close already in progress, skipping...")
+                return
+            
+            self._is_closing = True
             logger.info("🔒 Closing WebRTC connection...")
             
             # Stop audio player FIRST để giải phóng microphone device
             if self.audio_player:
                 try:
                     logger.info("🎤 Stopping audio player (releasing microphone)...")
-                    self.audio_player.stop()
+                    # Stop PyAudio stream FIRST (before stopping track)
+                    if hasattr(self.audio_player, '_stream') and self.audio_player._stream:
+                        try:
+                            logger.debug("Stopping PyAudio stream...")
+                            self.audio_player._stream.stop_stream()
+                            self.audio_player._stream.close()
+                            logger.debug("✓ PyAudio stream closed")
+                        except Exception as e:
+                            logger.debug(f"Error closing stream: {e}")
+                    
+                    # Terminate PyAudio instance
+                    if hasattr(self.audio_player, '_pa') and self.audio_player._pa:
+                        try:
+                            logger.debug("Terminating PyAudio...")
+                            self.audio_player._pa.terminate()
+                            logger.debug("✓ PyAudio terminated")
+                        except Exception as e:
+                            logger.debug(f"Error terminating PyAudio: {e}")
+                    
+                    # Then stop the track
+                    try:
+                        self.audio_player.stop()
+                    except Exception as e:
+                        logger.debug(f"Error stopping track: {e}")
+                    
                     self.audio_player = None
                     logger.info("✅ Audio player stopped and released")
                 except Exception as e:
                     logger.error(f"Error stopping audio player: {e}", exc_info=True)
+                    self.audio_player = None
             
             # Stop video track
             if self.video_player:
@@ -1068,44 +1108,87 @@ class WebRTCManager:
                     if hasattr(self.video_player, 'stop'):
                         self.video_player.stop()
                     self.video_player = None
+                    logger.info("✅ Video track stopped")
                 except Exception as e:
                     logger.error(f"Error stopping video player: {e}")
             
             # Close peer connection (this will cleanup ICE/STUN/TURN)
-            if self.pc:
+            # Store reference before setting to None to avoid race conditions
+            pc_to_close = self.pc
+            self.pc = None  # Set to None FIRST to stop event handlers from accessing it
+            
+            if pc_to_close:
                 try:
-                    # Cancel all pending tasks in peer connection
-                    if hasattr(self.pc, '_RTCPeerConnection__iceTransports'):
-                        for transport in self.pc._RTCPeerConnection__iceTransports:
+                    # Cancel all pending STUN transactions BEFORE closing transport
+                    # This prevents "NoneType has no attribute 'sendto'" errors
+                    if hasattr(pc_to_close, '_RTCPeerConnection__iceTransports'):
+                        for transport in pc_to_close._RTCPeerConnection__iceTransports:
                             if hasattr(transport, '_connection'):
                                 conn = transport._connection
-                                # Stop ICE gathering
-                                if hasattr(conn, 'close'):
-                                    try:
+                                try:
+                                    # Cancel all STUN transactions to prevent retry callbacks
+                                    # Access internal aioice transaction dict
+                                    if hasattr(conn, '_transactions'):
+                                        transactions = conn._transactions
+                                        if isinstance(transactions, dict):
+                                            for transaction in list(transactions.values()):
+                                                try:
+                                                    # Cancel timeout handle
+                                                    if hasattr(transaction, '_timeout_handle') and transaction._timeout_handle:
+                                                        transaction._timeout_handle.cancel()
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    # Cancel retry handle
+                                                    if hasattr(transaction, '_retry_handle') and transaction._retry_handle:
+                                                        transaction._retry_handle.cancel()
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    # Mark transaction as done
+                                                    if hasattr(transaction, '_done'):
+                                                        transaction._done = True
+                                                except Exception:
+                                                    pass
+                                            # Clear transactions dict
+                                            transactions.clear()
+                                            logger.debug("✅ Cancelled all STUN transactions")
+                                    
+                                    # Stop ICE gathering and close connection
+                                    if hasattr(conn, 'close'):
                                         await conn.close()
-                                    except Exception:
-                                        pass
+                                    
+                                    logger.debug("✅ ICE connection closed")
+                                except Exception as e:
+                                    logger.debug(f"Error closing ICE connection: {e}")
+                    
+                    # Đợi một chút để các STUN transaction callbacks hoàn thành
+                    # Tránh lỗi "NoneType has no attribute 'call_exception_handler'"
+                    await asyncio.sleep(0.5)
                     
                     # Now close peer connection
-                    if self.pc.connectionState != "closed":
-                        await self.pc.close()
+                    if pc_to_close.connectionState != "closed":
+                        await pc_to_close.close()
                         logger.info("✅ Peer connection closed")
                     
-                    self.pc = None
                 except Exception as e:
                     logger.error(f"Error closing peer connection: {e}", exc_info=True)
-                    self.pc = None
             
             # Clear buffered candidates
             self.pending_ice_candidates.clear()
             
-            # Đợi một chút để device được giải phóng hoàn toàn
-            await asyncio.sleep(0.5)
+            # Đợi lâu hơn để device được giải phóng hoàn toàn
+            logger.debug("⏳ Waiting 2s for OS to release audio device...")
+            await asyncio.sleep(2.0)
+            
+            # Reset closing flag
+            self._is_closing = False
             
             logger.info("✅ WebRTC cleanup complete - devices released")
                     
         except Exception as e:
             logger.error(f"Error closing peer connection: {e}", exc_info=True)
+            self._is_closing = False
     
     def start_event_loop(self):
         """Khởi động event loop riêng cho WebRTC trong background thread"""

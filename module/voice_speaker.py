@@ -54,9 +54,40 @@ class VoiceSpeaker:
                 new_samples = int(samples * 44100 / samplerate)
                 data = signal.resample(data, new_samples)
                 samplerate = 44100
+            
+            # Kiểm tra thiết bị có khả dụng không
+            try:
+                devices = sd.query_devices()
+                if self.speaker_index >= len(devices):
+                    raise ValueError(f"Device index {self.speaker_index} không tồn tại")
+                device_info = devices[self.speaker_index]
+                if device_info['max_output_channels'] == 0:
+                    raise ValueError(f"Device {self.speaker_index} không hỗ trợ output")
+            except Exception as dev_check_error:
+                logger.warning(f"⚠️ Thiết bị audio không khả dụng, thử thiết bị mặc định: {dev_check_error}")
+                # Fallback: thử với thiết bị mặc định (None)
+                try:
+                    sd.play(data, device=None, samplerate=samplerate)
+                    sd.wait()
+                    logger.info("✅ Phát thành công với thiết bị mặc định")
+                    return
+                except Exception as fallback_error:
+                    logger.error(f"❌ Lỗi khi phát với thiết bị mặc định: {fallback_error}")
+                    return
                 
-            sd.play(data, device=self.speaker_index)
-            sd.wait()  # Chờ phát xong
+            # Thử phát với thiết bị đã chọn
+            try:
+                sd.play(data, device=self.speaker_index, samplerate=samplerate)
+                sd.wait()  # Chờ phát xong
+            except Exception as play_error:
+                # Nếu lỗi, thử lại với thiết bị mặc định
+                logger.warning(f"⚠️ Lỗi khi phát với thiết bị {self.speaker_index}, thử thiết bị mặc định: {play_error}")
+                try:
+                    sd.play(data, device=None, samplerate=samplerate)
+                    sd.wait()
+                    logger.info("✅ Phát thành công với thiết bị mặc định (fallback)")
+                except Exception as fallback_error:
+                    logger.error(f"❌ Lỗi khi phát với thiết bị mặc định: {fallback_error}")
         except Exception as e:
             logger.error(f"⚠️ Lỗi khi phát file: {e}", exc_info=True)
 

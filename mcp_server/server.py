@@ -37,20 +37,6 @@ logger = setup_logger(__name__)
 
 # ============ CAMERA & AI TOOLS ============
 
-@mcp.tool()
-async def describe_image() -> str:
-    """
-    Mô tả hình ảnh, trả về mô tả của hình ảnh
-    """
-    camera: Camera = container.get("camera")
-    frame = camera.get_latest_frame()
-    agent: OpenAIAgent = container.get("agent")
-    answer = await agent.get_answer(
-        question="Mô tả hình ảnh",
-        image=frame
-    )
-    return answer
-
 # ============ LANE SEGMENTATION TOOLS ============
 
 @mcp.tool()

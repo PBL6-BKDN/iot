@@ -42,7 +42,9 @@ class VoiceStreamer:
             sample_rate=sample_rate,
             silence_threshold=SILENCE_THRESHOLD,  # Điều chỉnh theo môi trường
             silence_duration=SILENCE_DURATION,
-            min_speech_duration=MIN_SPEECH_DURATION
+            min_speech_duration=MIN_SPEECH_DURATION,
+            pre_buffer_duration=0.5,  # Giữ 0.5s âm thanh trước khi phát hiện
+            post_buffer_duration=0.3  # Giữ 0.3s âm thanh sau khi im lặng
         )
 
         # Callback functions
@@ -79,23 +81,68 @@ class VoiceStreamer:
         print("👂 Bắt đầu lắng nghe liên tục...")
 
     def stop_listening(self):
-        """Dừng lắng nghe"""
+        """Dừng lắng nghe và đảm bảo device được giải phóng"""
         self.is_listening = False
         if self.listening_thread:
-            self.listening_thread.join()
-        print("⏹️ Dừng lắng nghe")
+            self.listening_thread.join(timeout=3.0)  # Đợi tối đa 3 giây
+            if self.listening_thread.is_alive():
+                print("⚠️ Listening thread did not stop in time")
+            else:
+                print("⏹️ Dừng lắng nghe")
+                # Đợi thêm một chút để đảm bảo OS release device
+                import time
+                time.sleep(0.5)
+        else:
+            print("⏹️ Dừng lắng nghe")
 
     def _listening_loop(self):
         """Vòng lặp lắng nghe liên tục"""
         stream = None
         try:
-            stream = sd.InputStream(
-                device=self.mic_index,
-                channels=1,
-                samplerate=self.sample_rate,
-                dtype='int16',
-                blocksize=self.chunk_samples
-            )
+            # Try to open configured device first
+            try:
+                stream = sd.InputStream(
+                    device=self.mic_index,
+                    channels=1,
+                    samplerate=self.sample_rate,
+                    dtype='int16',
+                    blocksize=self.chunk_samples
+                )
+            except Exception as e:
+                print(f"⚠️ Cannot open mic device index {self.mic_index}: {e}")
+                # Fallback strategy: try default device, then known USB indices
+                try_indices = [None, 12, 13]
+                for idx in try_indices:
+                    if idx == self.mic_index:
+                        continue
+                    try:
+                        print(f"🔁 Trying fallback mic device: {idx}")
+                        stream = sd.InputStream(
+                            device=idx,
+                            channels=1,
+                            samplerate=self.sample_rate,
+                            dtype='int16',
+                            blocksize=self.chunk_samples
+                        )
+                        # Update current mic index if successful
+                        self.mic_index = idx if idx is not None else self.mic_index
+                        break
+                    except Exception as e2:
+                        print(f"⏭️ Fallback device {idx} failed: {e2}")
+                        stream = None
+                if stream is None:
+                    # As last resort, list devices to help debugging
+                    try:
+                        devices = sd.query_devices()
+                        print("=== Available audio devices (sounddevice) ===")
+                        for i, d in enumerate(devices):
+                            ins = d.get('max_input_channels') or d.get('maxInputChannels') or d.get('max_input_channels', 0)
+                            outs = d.get('max_output_channels') or d.get('maxOutputChannels') or d.get('max_output_channels', 0)
+                            name = d.get('name', 'unknown')
+                            print(f"{i}: {name} - IN:{ins} OUT:{outs}")
+                    except Exception:
+                        pass
+                    raise
             stream.start()
             print("🎧 Đang lắng nghe... (nói gì đó để bắt đầu thu âm)")
 

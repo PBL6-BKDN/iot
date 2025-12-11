@@ -557,6 +557,11 @@ class MessageHandler:
                     
         elif state == "failed":
             logger.error("❌ WebRTC connection failed")
+            # Đợi WebRTC cleanup hoàn tất trước khi resume VAD
+            import time
+            logger.info("⏳ Waiting 2.5s for WebRTC cleanup to complete...")
+            time.sleep(2.5)
+            
             # Resume VAD khi cuộc gọi failed
             if self.voice_mqtt:
                 try:
@@ -567,6 +572,11 @@ class MessageHandler:
                     
         elif state == "disconnected":
             logger.warning("⚠️ WebRTC connection disconnected")
+            # Đợi WebRTC cleanup hoàn tất trước khi resume VAD
+            import time
+            logger.info("⏳ Waiting 2.5s for WebRTC cleanup to complete...")
+            time.sleep(2.5)
+            
             # Resume VAD khi cuộc gọi disconnected
             if self.voice_mqtt:
                 try:
@@ -577,6 +587,12 @@ class MessageHandler:
                     
         elif state == "closed":
             logger.info("🔒 WebRTC connection closed")
+            # Đợi WebRTC cleanup hoàn tất trước khi resume VAD
+            import asyncio
+            import time
+            logger.info("⏳ Waiting 2.5s for WebRTC cleanup to complete...")
+            time.sleep(2.5)  # Đợi lâu hơn delay trong webrtc_manager.close() (2s)
+            
             # Resume VAD khi cuộc gọi closed
             if self.voice_mqtt:
                 try:

@@ -21,9 +21,9 @@ def main():
     mqtt_client = MQTTClient()
     mqtt_client.connect()
     
-    # # # # # --- Chạy hệ thống phát hiện vật cản ---
-    # obstacle_system = ObstacleDetectionSystem()
-    # obstacle_system.run()
+    # # # # # # --- Chạy hệ thống phát hiện vật cản ---
+    obstacle_system = ObstacleDetectionSystem()
+    obstacle_system.run()
     
     speaker = VoiceSpeaker("USB Audio Device")
 
@@ -36,14 +36,14 @@ def main():
     logger.info("✅ VoiceMQTT linked to WebRTC - will pause during calls")
     
     camera = CameraDirect()
-    # lane_segmentation = LaneSegmentation()
-    # lane_segmentation.run()
+    lane_segmentation = LaneSegmentation()
+    lane_segmentation.run()
     # status = DeviceStatus(mqtt_client)
     
 
     # MQTT GPS publisher
-    # gps = GPSMQTT(mqtt_client)
-    # gps.publish_gps(qos=1)
+    gps = GPSMQTT(mqtt_client)
+    gps.publish_gps(qos=1)
     
     mcp.run(transport='sse')
     # mqtt_client.publish(TOPICS['device_ping'], {"data": "PING"})
@@ -55,11 +55,11 @@ def main():
         logger.error(f"Lỗi: {e}", exc_info=True)
         logger.info("Dừng hệ thống...")
     finally:
-        # obstacle_system.stop()
+        obstacle_system.stop()
         camera.stop()
-        # voice.stop()
+        voice.stop()
         mqtt_client.disconnect()
-        # lane_segmentation.stop()
+        lane_segmentation.stop()
 
 if __name__ == "__main__":
     main()
