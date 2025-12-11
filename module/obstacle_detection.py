@@ -3,11 +3,12 @@ import cv2
 import zmq
 import pickle
 import multiprocessing as mp
+from multiprocessing import shared_memory
 import time
 import busio
 import requests
 import adafruit_vl53l1x
-import time
+import numpy as np
 from config import SERVER_HTTP_BASE, BASE_DIR
 from container import container
 from module.voice_speaker import VoiceSpeaker
@@ -18,6 +19,7 @@ logger = setup_logger(__name__)
 import board
 import busio
 import httpx
+import simpleaudio as sa
 WARNING_SOUND_FILE = os.path.join(BASE_DIR, "audio", "stop.wav")
 
 BASE_AUDIO_PATH = os.path.join(BASE_DIR, "audio", "warning")
@@ -70,10 +72,18 @@ class ObstacleDetectionSystem:
         self.last_alert_time = 0
         self.alert_interval = 5
         self._stop_event = mp.Event()
-        self._detection_enabled = mp.Value('b', False)  # Cờ điều khiển detection (shared giữa processes)
+        self._detection_enabled = mp.Value('b', False)
         self._process = None
+        
+        # Camera shared memory info - sẽ được lấy khi run()
+        self._camera_shm_name = None
+        self._frame_shape = None
+        self._frame_dtype = None
+        self._shared_frame = None
+        self._camera_shm = None
+        
         container.register("obstacle_detection_system", self)
-        logger.info("[ObstacleDetection] Đã khởi tạo (mặc định TẮT - sensors sẽ sẵn sàng khi run())")
+        logger.info("[ObstacleDetection] Đã khởi tạo (mặc định TẮT)")
 
     def setup_sensors(self):
         try:
@@ -209,31 +219,43 @@ class ObstacleDetectionSystem:
                 self.last_alert_time = now
                 logger.info("[ObstacleDetection] Phát hiện vật cản trong phạm vi 1–1.5m!")
                 
-                speaker: VoiceSpeaker = container.get("speaker")
-                speaker.play_file(WARNING_SOUND_FILE)
+                # Phát âm thanh cảnh báo trực tiếp (không qua container)
+                try:
+                    wave_obj = sa.WaveObject.from_wave_file(WARNING_SOUND_FILE)
+                    wave_obj.play()
+                except Exception as e:
+                    logger.error(f"[ObstacleDetection] Lỗi phát âm thanh: {e}")
                 
-                # Lấy ảnh từ camera
-                camera: Camera = container.get("camera")
-                frame = camera.get_latest_frame()
+                # Lấy ảnh từ shared memory
+                frame = None
+                if self._shared_frame is not None:
+                    try:
+                        frame = self._shared_frame.copy()
+                    except Exception as e:
+                        logger.error(f"[ObstacleDetection] Lỗi đọc frame từ shared memory: {e}")
                 
-                if frame is not None:
+                if frame is not None and np.any(frame):
                     logger.info(f"[ObstacleDetection] Ảnh đã chụp thành công")
                     try:
-                        # Mã hóa ảnh
-                        success, buffer = cv2.imencode('.jpg', frame)
-                        if not success:
-                            logger.error("[ObstacleDetection] Lỗi mã hóa ảnh.")
-                            return                   
                         self.send_image_to_api(frame)                       
                     except requests.exceptions.RequestException as e:
                         logger.error(f"[ObstacleDetection] Lỗi kết nối API: {e}")
                     except Exception as e:
                         logger.error(f"[ObstacleDetection] Lỗi xử lý: {e}")
                 else:
-                    logger.info("[ObstacleDetection] Không có ảnh mới.")
+                    logger.warning("[ObstacleDetection] Không có ảnh từ camera.")
                     
-    def _run_loop(self):
+    def _run_loop(self, camera_shm_name, frame_shape, frame_dtype):
         """Main loop chạy trong worker process"""
+        # Attach to camera shared memory
+        try:
+            self._camera_shm = shared_memory.SharedMemory(name=camera_shm_name)
+            self._shared_frame = np.ndarray(frame_shape, dtype=frame_dtype, buffer=self._camera_shm.buf)
+            logger.info(f"[ObstacleDetection] Attached to camera shared memory: {camera_shm_name}")
+        except Exception as e:
+            logger.error(f"[ObstacleDetection] Không thể attach camera shared memory: {e}")
+            self._shared_frame = None
+        
         # Setup sensors trong worker process
         self.setup_sensors()
         logger.info("[ObstacleDetection] Worker process đã khởi động - sensors sẵn sàng")
@@ -242,13 +264,18 @@ class ObstacleDetectionSystem:
                 # Chỉ gọi detect_obstacles khi được bật
                 if self._detection_enabled.value:
                     self.detect_obstacles()
-                # Sleep time phải lớn hơn timing_budget để đảm bảo cảm biến có đủ thời gian đo lại
                 time.sleep(0.25)
         except KeyboardInterrupt:
             logger.info("[ObstacleDetection] Dừng hệ thống.")
         except Exception as e:
             logger.error(f"[ObstacleDetection] Lỗi trong _run_loop: {e}", exc_info=True)
         finally:
+            # Cleanup shared memory
+            if self._camera_shm:
+                try:
+                    self._camera_shm.close()
+                except:
+                    pass
             self.cleanup()
     
     def run(self):
@@ -257,8 +284,23 @@ class ObstacleDetectionSystem:
             logger.warning("[ObstacleDetection] Đã đang chạy rồi!")
             return False
         
+        # Lấy camera shared memory info từ container
+        try:
+            camera = container.get("camera")
+            self._camera_shm_name = camera._shm.name
+            self._frame_shape = camera._frame_shape
+            self._frame_dtype = camera._frame_dtype
+            logger.info(f"[ObstacleDetection] Lấy camera info: {self._camera_shm_name}")
+        except Exception as e:
+            logger.error(f"[ObstacleDetection] Không thể lấy camera info: {e}")
+            return False
+        
         self._stop_event.clear()
-        self._process = mp.Process(target=self._run_loop, daemon=True)
+        self._process = mp.Process(
+            target=self._run_loop,
+            args=(self._camera_shm_name, self._frame_shape, self._frame_dtype),
+            daemon=True
+        )
         self._process.start()
         logger.info(f"[ObstacleDetection] Worker đã khởi động (PID: {self._process.pid}) - Detection: {'BẬT' if self._detection_enabled.value else 'TẮT'}")
         return True

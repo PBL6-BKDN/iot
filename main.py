@@ -23,10 +23,6 @@ def main():
     mqtt_client = MQTTClient()
     mqtt_client.connect()
     
-    # # # # # # --- Chạy hệ thống phát hiện vật cản ---
-    obstacle_system = ObstacleDetectionSystem()
-    obstacle_system.run()
-    
     speaker = VoiceSpeaker("USB Audio Device")
 
     # Initialize services
@@ -36,16 +32,20 @@ def main():
     
     logger.info("✅ VoiceMQTT linked to WebRTC - will pause during calls")
     
+    # Camera PHẢI được khởi tạo TRƯỚC ObstacleDetection và LaneSegmentation
+    # vì chúng cần shared memory từ camera
     camera = CameraDirect()
+    
+    # Obstacle Detection - Khởi tạo và run worker (sensors sẵn sàng)
+    # Detection mặc định TẮT, bật qua MCP tool start_obstacle_detection
+    obstacle_system = ObstacleDetectionSystem()
+    obstacle_system.run()  # Worker runs, attaches to camera shm, sensors ready
+    logger.info("📌 Obstacle Detection: Worker chạy, Detection TẮT (dùng MCP để bật)")
     
     # Lane Segmentation - Mặc định TẮT, bật qua MCP
     lane_segmentation = LaneSegmentation()
     # lane_segmentation.run()  # Không tự động chạy, dùng MCP để bật
     logger.info("📌 Lane Segmentation: TẮT (dùng MCP để bật)")
-    
-    # Obstacle Detection - Worker chạy (sensors sẵn sàng), nhưng detection TẮT
-    # Để bật detection, dùng MCP tool start_obstacle_detection
-    logger.info("📌 Obstacle Detection: sensors sẵn sàng, detection TẮT (dùng MCP để bật)")
     
 
     # # MQTT GPS publisher
