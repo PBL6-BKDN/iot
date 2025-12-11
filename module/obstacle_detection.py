@@ -98,8 +98,10 @@ class ObstacleDetectionSystem:
         self.alert_interval = 5
         self._stop_event = mp.Event()
         self._process = None
-        self.setup_sensors()
+        # NOTE: Không setup_sensors() ở đây vì sensors chỉ cần trong worker process
+        # Việc setup trong main process và worker process cùng lúc gây conflict I2C
         container.register("obstacle_detection_system", self)
+        logger.info("[ObstacleDetection] Đã khởi tạo (sensors sẽ được setup trong worker process)")
 
     def setup_sensors(self):
         try:
