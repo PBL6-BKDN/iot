@@ -70,11 +70,10 @@ class ObstacleDetectionSystem:
         self.last_alert_time = 0
         self.alert_interval = 5
         self._stop_event = mp.Event()
+        self._detection_enabled = mp.Value('b', False)  # Cờ điều khiển detection (shared giữa processes)
         self._process = None
-        # NOTE: Không setup_sensors() ở đây vì sensors chỉ cần trong worker process
-        # Việc setup trong main process và worker process cùng lúc gây conflict I2C
         container.register("obstacle_detection_system", self)
-        logger.info("[ObstacleDetection] Đã khởi tạo (sensors sẽ được setup trong worker process)")
+        logger.info("[ObstacleDetection] Đã khởi tạo (mặc định TẮT - sensors sẽ sẵn sàng khi run())")
 
     def setup_sensors(self):
         try:
@@ -224,28 +223,8 @@ class ObstacleDetectionSystem:
                         success, buffer = cv2.imencode('.jpg', frame)
                         if not success:
                             logger.error("[ObstacleDetection] Lỗi mã hóa ảnh.")
-                            return
-                        
-                       
-                        self.send_image_to_api(frame)
-                        # Gửi ảnh đến API
-                        # files = {
-                        #     'image': ('obstacle.jpg', buffer.tobytes(), 'image/jpeg')
-                        # }
-                        # response = requests.post(f"{SERVER_HTTP_BASE}/detect", files=files, timeout=10)
-                        # data = response.json()
-                        
-                        # if data.get("success"):
-                        #     audio_file = data.get("data", {}).get("audio_file")
-                        #     if audio_file:
-                        #         audio_file_path = os.path.join(BASE_AUDIO_PATH, f'{audio_file}.wav')
-                        #         logger.info(f"[ObstacleDetection] Phát âm thanh: {audio_file_path}")
-                        #         speaker.play_file(audio_file_path)
-                        #     else:
-                        #         logger.warning("[ObstacleDetection] Không có file audio trong response")
-                        # else:
-                        #     logger.warning(f"[ObstacleDetection] API trả về lỗi: {data.get('message')}")
-                            
+                            return                   
+                        self.send_image_to_api(frame)                       
                     except requests.exceptions.RequestException as e:
                         logger.error(f"[ObstacleDetection] Lỗi kết nối API: {e}")
                     except Exception as e:
@@ -255,13 +234,15 @@ class ObstacleDetectionSystem:
                     
     def _run_loop(self):
         """Main loop chạy trong worker process"""
-        # Re-setup sensors trong worker process vì hardware không share
+        # Setup sensors trong worker process
         self.setup_sensors()
+        logger.info("[ObstacleDetection] Worker process đã khởi động - sensors sẵn sàng")
         try:
             while not self._stop_event.is_set():
-                self.detect_obstacles()
+                # Chỉ gọi detect_obstacles khi được bật
+                if self._detection_enabled.value:
+                    self.detect_obstacles()
                 # Sleep time phải lớn hơn timing_budget để đảm bảo cảm biến có đủ thời gian đo lại
-                # timing_budget = 200ms, sleep 0.25s (250ms) để có buffer cho overhead
                 time.sleep(0.25)
         except KeyboardInterrupt:
             logger.info("[ObstacleDetection] Dừng hệ thống.")
@@ -271,6 +252,7 @@ class ObstacleDetectionSystem:
             self.cleanup()
     
     def run(self):
+        """Khởi động worker process (sensors sẵn sàng, nhưng detection mặc định TẮT)"""
         if self._process and self._process.is_alive():
             logger.warning("[ObstacleDetection] Đã đang chạy rồi!")
             return False
@@ -278,8 +260,24 @@ class ObstacleDetectionSystem:
         self._stop_event.clear()
         self._process = mp.Process(target=self._run_loop, daemon=True)
         self._process.start()
-        logger.info(f"[ObstacleDetection] Đã khởi động (PID: {self._process.pid})")
+        logger.info(f"[ObstacleDetection] Worker đã khởi động (PID: {self._process.pid}) - Detection: {'BẬT' if self._detection_enabled.value else 'TẮT'}")
         return True
+    
+    def enable_detection(self):
+        """Bật chức năng phát hiện vật cản"""
+        self._detection_enabled.value = True
+        logger.info("[ObstacleDetection] Đã BẬT detection")
+        return True
+    
+    def disable_detection(self):
+        """Tắt chức năng phát hiện vật cản (sensors vẫn hoạt động)"""
+        self._detection_enabled.value = False
+        logger.info("[ObstacleDetection] Đã TẮT detection (sensors vẫn sẵn sàng)")
+        return True
+    
+    def is_detection_enabled(self) -> bool:
+        """Kiểm tra detection có đang bật không"""
+        return self._detection_enabled.value
     
     def stop(self):
         if not self._process or not self._process.is_alive():

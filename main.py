@@ -20,8 +20,8 @@ def main():
     """Main application loop"""
     # Initialize MQTT client
     
-    # mqtt_client = MQTTClient()
-    # mqtt_client.connect()
+    mqtt_client = MQTTClient()
+    mqtt_client.connect()
     
     # # # # # # --- Chạy hệ thống phát hiện vật cản ---
     obstacle_system = ObstacleDetectionSystem()
@@ -30,25 +30,29 @@ def main():
     speaker = VoiceSpeaker("USB Audio Device")
 
     # Initialize services
-    # voice = VoiceMQTT(mqtt_client)
-    # voice.start_continuous_listening()
-    #mqtt_client.handler.set_voice_mqtt(voice)
-    # Link VoiceMQTT với WebRTC Manager để có thể pause/resume khi có cuộc gọi
+    voice = VoiceMQTT(mqtt_client)
+    voice.start_continuous_listening()
+    mqtt_client.handler.set_voice_mqtt(voice)
     
     logger.info("✅ VoiceMQTT linked to WebRTC - will pause during calls")
     
     camera = CameraDirect()
+    
+    # Lane Segmentation - Mặc định TẮT, bật qua MCP
     lane_segmentation = LaneSegmentation()
-    lane_segmentation.run()
-    # status = DeviceStatus(mqtt_client)
+    # lane_segmentation.run()  # Không tự động chạy, dùng MCP để bật
+    logger.info("📌 Lane Segmentation: TẮT (dùng MCP để bật)")
+    
+    # Obstacle Detection - Worker chạy (sensors sẵn sàng), nhưng detection TẮT
+    # Để bật detection, dùng MCP tool start_obstacle_detection
+    logger.info("📌 Obstacle Detection: sensors sẵn sàng, detection TẮT (dùng MCP để bật)")
     
 
     # MQTT GPS publisher
-    # gps = GPSMQTT(mqtt_client)
-    # gps.publish_gps(qos=1)
+    gps = GPSMQTT(mqtt_client)
+    gps.publish_gps(qos=1)
     
     mcp.run(transport='sse')
-    # mqtt_client.publish(TOPICS['device_ping'], {"data": "PING"})
     
     try:
         pass
@@ -59,8 +63,8 @@ def main():
     finally:
         obstacle_system.stop()
         camera.stop()
-        # voice.stop()
-        # mqtt_client.disconnect()
+        voice.stop()
+        mqtt_client.disconnect()
         lane_segmentation.stop()
 
 if __name__ == "__main__":
