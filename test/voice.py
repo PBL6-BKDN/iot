@@ -1,7 +1,7 @@
 from pprint import pprint
 import time
 import numpy as np
-from config import AUDIO_SAMPLE_RATE, MIC_INDEX
+from config import AUDIO_SAMPLE_RATE, MIC_NAME
 from module.voice_mic import VoiceStreamer
 from module.voice_speaker import VoiceSpeaker
 
@@ -14,9 +14,9 @@ def demo_continuous_listening():
     """Demo lắng nghe liên tục"""
     print("=== Demo Continuous Voice Listening ===")
     speaker_service = VoiceSpeaker(speaker_name="USB Audio Device")
-    print(MIC_INDEX)
+
     streamer = VoiceStreamer(
-        MIC_INDEX, sample_rate=AUDIO_SAMPLE_RATE, chunk_duration_ms=100)
+        MIC_NAME, sample_rate=AUDIO_SAMPLE_RATE, chunk_duration_ms=100)
 
     def on_speech_start():
         print("🎤 Bắt đầu phát hiện giọng nói!")

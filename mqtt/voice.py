@@ -20,7 +20,7 @@ class VoiceMQTT:
     def __init__(self, mqtt_client=None):
         self.mqtt_client = mqtt_client
         self.base_streamer = BaseVoiceStreamer(
-            MIC_INDEX, sample_rate=AUDIO_SAMPLE_RATE, chunk_duration_ms=AUDIO_CHUNK_MS)
+            MIC_NAME, sample_rate=AUDIO_SAMPLE_RATE, chunk_duration_ms=AUDIO_CHUNK_MS)
 
     def set_mqtt_client(self, mqtt_client):
         """Set MQTT client for sending audio"""

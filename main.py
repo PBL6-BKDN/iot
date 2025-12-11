@@ -48,9 +48,9 @@ def main():
     logger.info("📌 Obstacle Detection: sensors sẵn sàng, detection TẮT (dùng MCP để bật)")
     
 
-    # MQTT GPS publisher
-    gps = GPSMQTT(mqtt_client)
-    gps.publish_gps(qos=1)
+    # # MQTT GPS publisher
+    # gps = GPSMQTT(mqtt_client)
+    # gps.publish_gps(qos=1)
     
     mcp.run(transport='sse')
     

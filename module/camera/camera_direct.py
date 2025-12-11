@@ -9,7 +9,9 @@ from log import setup_logger
 from .camera_base import Camera
 from container import container
 logger = setup_logger(__name__)
-
+import cv2
+import numpy as np
+from multiprocessing import shared_memory
 
 def _camera_worker(
     camera_id, width, height, target_fps, auto_reconnect, reconnect_delay,
@@ -19,9 +21,7 @@ def _camera_worker(
     Worker process để đọc frames từ camera.
     Chạy trong process riêng để bypass GIL.
     """
-    import cv2
-    import numpy as np
-    from multiprocessing import shared_memory
+
     
     frame_delay = 1.0 / target_fps if target_fps > 0 else 0
     last_frame_time = 0
@@ -108,7 +108,7 @@ class CameraDirect(Camera):
     Lớp camera sử dụng multiprocessing để bypass GIL.
     Frames được share qua shared memory.
     """
-    def __init__(self, camera_id=0, width=640, height=480, fps=30, 
+    def __init__(self, camera_id=1, width=640, height=480, fps=30, 
                  auto_reconnect=True, reconnect_delay=5.0):
         """
         Khởi tạo camera với multiprocessing.

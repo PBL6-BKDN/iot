@@ -19,18 +19,28 @@ from log import setup_logger
 from config import BASE_DIR, MAX_AMP
 logger = setup_logger(__name__)
 
+def find_device_index_by_name(keyword, kind='input'):
+    devices = sd.query_devices()
+    for i, dev in enumerate(devices):
+        if keyword.lower() in dev['name'].lower():
+            if kind == 'input' and dev['max_input_channels'] > 0:
+                return i
+    return None
 
 class VoiceStreamer:
     """Class để ghi âm và gửi âm thanh qua MQTT hoặc HTTP"""
 
-    def __init__(self, mic_index: int, sample_rate: int = 48000, chunk_duration_ms: int = 100):
+    def __init__(self, mic_name: str, sample_rate: int = 48000, chunk_duration_ms: int = 100):
         """
         Args:
             mic_name: Tên microphone để tìm device
             sample_rate: Tần số lấy mẫu âm thanh
             chunk_duration_ms: Thời gian mỗi chunk (ms) cho real-time streaming
         """
-        self.mic_index = mic_index
+        self.mic_index = find_device_index_by_name(mic_name, kind='input')
+        if self.mic_index is None:
+            raise ValueError(f"Không tìm thấy microphone nào chứa '{mic_name}'!")
+        logger.info(f"🎤 Microphone index (sounddevice): {self.mic_index}")
         self.sample_rate = sample_rate
         self.chunk_duration_ms = chunk_duration_ms
         self.chunk_samples = int(sample_rate * chunk_duration_ms / 1000.0)
