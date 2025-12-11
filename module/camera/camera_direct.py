@@ -35,17 +35,17 @@ def _camera_worker(
         shm = shared_memory.SharedMemory(name=shm_name)
         shared_frame = np.ndarray(frame_shape, dtype=frame_dtype, buffer=shm.buf)
     except Exception as e:
-        print(f"[Camera Worker] Không thể attach shared memory: {e}")
+        logger.exception(f"[Camera Worker] Không thể attach shared memory: {e}")
         return
     
     # Mở camera trong worker process
     cap = None
     try:
-        print(f"[Camera Worker] Đang mở camera {camera_id}...")
+        logger.info(f"[Camera Worker] Đang mở camera {camera_id}...")
         cap = cv2.VideoCapture(camera_id)
         
         if not cap.isOpened():
-            print(f"[Camera Worker] Failed to open camera {camera_id}")
+            logger.error(f"[Camera Worker] Failed to open camera {camera_id}")
             return
         
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
@@ -55,7 +55,7 @@ def _camera_worker(
         actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         actual_fps = cap.get(cv2.CAP_PROP_FPS)
-        print(f"[Camera Worker] Camera đã mở: {actual_width}x{actual_height} @ {actual_fps} FPS")
+        logger.info(f"[Camera Worker] Camera đã mở: {actual_width}x{actual_height} @ {actual_fps} FPS")
         
         while not stop_event.is_set():
             try:
@@ -69,7 +69,7 @@ def _camera_worker(
                 if not ret:
                     consecutive_errors += 1
                     if consecutive_errors >= max_consecutive_errors and auto_reconnect:
-                        print("[Camera Worker] Đang thử reconnect...")
+                        logger.info("[Camera Worker] Đang thử reconnect...")
                         cap.release()
                         time.sleep(reconnect_delay)
                         cap = cv2.VideoCapture(camera_id)
@@ -93,14 +93,14 @@ def _camera_worker(
                 
             except Exception as e:
                 error_count += 1
-                print(f"[Camera Worker] Lỗi: {e}")
+                logger.info(f"[Camera Worker] Lỗi: {e}")
                 time.sleep(0.1)
                 
     finally:
         if cap:
             cap.release()
         shm.close()
-        print(f"[Camera Worker] Đã dừng. Frames: {frame_count}, Errors: {error_count}")
+        logger.info(f"[Camera Worker] Đã dừng. Frames: {frame_count}, Errors: {error_count}")
 
 
 class CameraDirect(Camera):
@@ -238,7 +238,7 @@ class CameraDirect(Camera):
 
 if __name__ == "__main__":
     # Test camera với context manager
-    print("Nhấn 'q' để thoát, 's' để xem stats")
+    logger.info("Nhấn 'q' để thoát, 's' để xem stats")
     
     with CameraDirect(fps=30) as camera:
         try:
@@ -252,10 +252,10 @@ if __name__ == "__main__":
                     break
                 elif key == ord('s'):
                     stats = camera.get_stats()
-                    print(f"\n=== Camera Stats ===")
-                    print(f"Running: {stats['is_running']}")
-                    print(f"Target FPS: {stats['target_fps']}")
-                    print(f"Camera ID: {stats['camera_id']}")
+                    logger.info(f"\n=== Camera Stats ===")
+                    logger.info(f"Running: {stats['is_running']}")
+                    logger.info(f"Target FPS: {stats['target_fps']}")
+                    logger.info(f"Camera ID: {stats['camera_id']}")
                     
         finally:
             cv2.destroyAllWindows()

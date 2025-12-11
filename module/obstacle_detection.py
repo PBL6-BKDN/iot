@@ -18,6 +18,7 @@ logger = setup_logger(__name__)
 import board
 import busio
 import httpx
+import json
 WARNING_SOUND_FILE = os.path.join(BASE_DIR, "audio", "stop.wav")
 
 BASE_AUDIO_PATH = os.path.join(BASE_DIR, "audio", "warning")
@@ -37,15 +38,46 @@ class ToFSensor:
             self.tof = None
 
     def read_distance(self):
-        if self.tof and self.tof.data_ready:
+        if not self.tof:
+            return None
+        
+        # #region agent log
+        try:
+            with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"post-fix-v2","hypothesisId":"A,E","location":"obstacle_detection.py:40","message":"read_distance called","data":{"sensor_name":self.name,"tof_exists":self.tof is not None,"data_ready":self.tof.data_ready if self.tof else None},"timestamp":int(time.time()*1000)}) + '\n')
+        except: pass
+        # #endregion
+        
+        # Chỉ đọc khi data_ready, không đợi (để loop tự nhiên với sleep 0.5s đủ cho timing_budget 200ms)
+        if self.tof.data_ready:
             try:
                 distance = self.tof.distance
                 self.tof.clear_interrupt()
+                # #region agent log
+                try:
+                    with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"post-fix-v2","hypothesisId":"A","location":"obstacle_detection.py:50","message":"distance read successfully","data":{"sensor_name":self.name,"distance":distance},"timestamp":int(time.time()*1000)}) + '\n')
+                except: pass
+                # #endregion
                 return distance
             except OSError as e:
                 print(f"[Cảm biến {self.name}] Lỗi đọc dữ liệu: {e}")
+                # #region agent log
+                try:
+                    with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"post-fix-v2","hypothesisId":"B","location":"obstacle_detection.py:58","message":"OSError in read_distance","data":{"sensor_name":self.name,"error":str(e)},"timestamp":int(time.time()*1000)}) + '\n')
+                except: pass
+                # #endregion
                 self.stop()
                 self.tof = None
+                return None
+        # #region agent log
+        else:
+            try:
+                with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"post-fix-v2","hypothesisId":"A,E","location":"obstacle_detection.py:66","message":"read_distance returned None - data not ready","data":{"sensor_name":self.name,"tof_exists":self.tof is not None,"data_ready":self.tof.data_ready if self.tof else None},"timestamp":int(time.time()*1000)}) + '\n')
+            except: pass
+        # #endregion
         return None
 
     def stop(self):
@@ -190,12 +222,24 @@ class ObstacleDetectionSystem:
                     logger.error("[API] Đã hết số lần thử")
 
     def detect_obstacles(self):
+        # #region agent log
+        try:
+            with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"obstacle_detection.py:192","message":"detect_obstacles called","data":{"sensor_count":len(self.sensors)},"timestamp":int(time.time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         distances = []
         for sensor in self.sensors:
             distance = sensor.read_distance()
             if distance:
                 logger.debug(f"[ObstacleDetection] [Cảm biến {sensor.name}] Khoảng cách: {distance} cm")
                 distances.append(distance)
+        # #region agent log
+        try:
+            with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"obstacle_detection.py:201","message":"detect_obstacles completed","data":{"distances":distances,"distance_count":len(distances)},"timestamp":int(time.time()*1000)}) + '\n')
+        except: pass
+        # #endregion
 
         now = time.time()
         if any(100 <= d <= 150 for d in distances):
@@ -248,14 +292,38 @@ class ObstacleDetectionSystem:
                     
     def _run_loop(self):
         """Main loop chạy trong worker process"""
+        # #region agent log
+        try:
+            with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"obstacle_detection.py:249","message":"_run_loop started","data":{},"timestamp":int(time.time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         # Re-setup sensors trong worker process vì hardware không share
         self.setup_sensors()
+        loop_count = 0
         try:
             while not self._stop_event.is_set():
+                loop_count += 1
+                # #region agent log
+                try:
+                    with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"post-fix-v2","hypothesisId":"C","location":"obstacle_detection.py:257","message":"_run_loop iteration","data":{"loop_count":loop_count,"stop_event_set":self._stop_event.is_set()},"timestamp":int(time.time()*1000)}) + '\n')
+                except: pass
+                # #endregion
                 self.detect_obstacles()
-                time.sleep(0.5)
+                # Sleep time phải lớn hơn timing_budget để đảm bảo cảm biến có đủ thời gian đo lại
+                # timing_budget = 200ms, sleep 0.25s (250ms) để có buffer cho overhead
+                time.sleep(0.25)
         except KeyboardInterrupt:
             logger.info("[ObstacleDetection] Dừng hệ thống.")
+        except Exception as e:
+            # #region agent log
+            try:
+                with open('/home/jetson/iot/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"obstacle_detection.py:264","message":"exception in _run_loop","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(time.time()*1000)}) + '\n')
+            except: pass
+            # #endregion
+            logger.error(f"[ObstacleDetection] Lỗi trong _run_loop: {e}", exc_info=True)
         finally:
             self.cleanup()
     

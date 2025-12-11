@@ -1,5 +1,4 @@
 import os
-from pprint import pformat
 import cv2
 import requests
 import time
@@ -12,7 +11,11 @@ from module.voice_speaker import VoiceSpeaker
 
 from log import setup_logger
 logger = setup_logger(__name__)
-
+import cv2
+import numpy as np
+import requests
+import time
+from multiprocessing import shared_memory
 
 def _lane_segmentation_worker(
     stop_event: mp.Event,
@@ -29,11 +32,7 @@ def _lane_segmentation_worker(
     Worker process cho Lane Segmentation.
     Đọc frames từ shared memory của camera và gửi đến API.
     """
-    import cv2
-    import numpy as np
-    import requests
-    import time
-    from multiprocessing import shared_memory
+
     
     frame_interval = collection_window / frame_count
     adaptive_interval = SEND_INTERVAL_MIN
@@ -42,9 +41,9 @@ def _lane_segmentation_worker(
     try:
         camera_shm = shared_memory.SharedMemory(name=camera_shm_name)
         shared_frame = np.ndarray(frame_shape, dtype=frame_dtype, buffer=camera_shm.buf)
-        print(f"[LaneSegmentation Worker] Attached to camera shared memory: {camera_shm_name}")
+        logger.info(f"[LaneSegmentation Worker] Attached to camera shared memory: {camera_shm_name}")
     except Exception as e:
-        print(f"[LaneSegmentation Worker] Không thể attach camera shared memory: {e}")
+        logger.exception(f"[LaneSegmentation Worker] Không thể attach camera shared memory: {e}")
         return
     
     def frames_are_different(frame1, frame2, threshold):
@@ -74,7 +73,7 @@ def _lane_segmentation_worker(
             if not files:
                 return
             
-            print(f"[LaneSegmentation Worker] Gửi {len(files)} frames đến API")
+            logger.info(f"[LaneSegmentation Worker] Gửi {len(files)} frames đến API")
             
             response = requests.post(
                 f"{server_url}/navigate_batch10/", 
@@ -83,11 +82,11 @@ def _lane_segmentation_worker(
             )
             
             if response.status_code != 200:
-                print(f"[LaneSegmentation Worker] HTTP {response.status_code}")
+                logger.error(f"[LaneSegmentation Worker] HTTP {response.status_code}")
                 return
             
             data = response.json()
-            print(f"[LaneSegmentation Worker] API response received")
+            logger.info(f"[LaneSegmentation Worker] API response received")
             
             # Xử lý audio (thông qua file thay vì container)
             audio_file = data.get("final_result", {}).get("data", {}).get("audio_file")
@@ -95,12 +94,12 @@ def _lane_segmentation_worker(
                 audio_path = os.path.join(base_dir, "audio", "warning", f"{audio_file}.wav")
                 if os.path.exists(audio_path):
                     # Gửi signal để main process phát audio
-                    print(f"[LaneSegmentation Worker] Audio file: {audio_path}")
+                    logger.info(f"[LaneSegmentation Worker] Audio file: {audio_path}")
                     
         except requests.exceptions.Timeout:
-            print("[LaneSegmentation Worker] Request timeout")
+            logger.error("[LaneSegmentation Worker] Request timeout")
         except Exception as e:
-            print(f"[LaneSegmentation Worker] Error: {e}")
+            logger.exception(f"[LaneSegmentation Worker] Error: {e}")
     
     # Main loop
     current_window_frames = []
@@ -144,7 +143,7 @@ def _lane_segmentation_worker(
                             adaptive_interval = min(SEND_INTERVAL_MAX, adaptive_interval * 1.2)
                     
                     if should_send:
-                        print(f"[LaneSegmentation Worker] Gửi {len(current_window_frames)} frames")
+                        logger.info(f"[LaneSegmentation Worker] Gửi {len(current_window_frames)} frames")
                         send_images_to_api(current_window_frames)
                         adaptive_interval = max(SEND_INTERVAL_MIN, adaptive_interval * 0.8)
                 
@@ -157,7 +156,7 @@ def _lane_segmentation_worker(
             
     finally:
         camera_shm.close()
-        print("[LaneSegmentation Worker] Đã dừng")
+        logger.info("[LaneSegmentation Worker] Đã dừng")
 
 
 class LaneSegmentation:
